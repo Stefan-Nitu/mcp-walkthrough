@@ -42,7 +42,7 @@ jobs:
     needs: test
     strategy:
       matrix:
-        node-version: [18.x, 20.x, 22.x]
+        node-version: [20.x, 22.x, 24.x]
 
     steps:
     - uses: actions/checkout@v6
@@ -59,7 +59,7 @@ jobs:
       run: bun install
 
     - name: Build
-      run: bun run build
+      run: tsc -p tsconfig.build.json
 
     - name: Verify server starts on Node.js ${{ matrix.node-version }}
       run: |
