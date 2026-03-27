@@ -1,0 +1,53 @@
+{
+  "name": "walkthrough-bridge",
+  "displayName": "Walkthrough Bridge",
+  "description": "Bridge between mcp-walkthrough and VS Code editor API",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "walkthrough.next",
+        "title": "Walkthrough: Next Step"
+      },
+      {
+        "command": "walkthrough.prev",
+        "title": "Walkthrough: Previous Step"
+      },
+      {
+        "command": "walkthrough.stop",
+        "title": "Walkthrough: Stop"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "walkthrough.next",
+        "key": "ctrl+shift+right",
+        "mac": "cmd+shift+right"
+      },
+      {
+        "command": "walkthrough.prev",
+        "key": "ctrl+shift+left",
+        "mac": "cmd+shift+left"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.100.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

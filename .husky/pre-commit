@@ -1,0 +1,26 @@
+#!/bin/bash
+
+echo "[pre-commit] Running typecheck..." >&2
+if ! bun run typecheck; then
+    echo "[pre-commit] Typecheck failed. Commit aborted." >&2
+    exit 1
+fi
+
+echo "[pre-commit] Running linter..." >&2
+if ! bun run lint; then
+    echo "[pre-commit] Lint failed. Commit aborted." >&2
+    exit 1
+fi
+
+echo "[pre-commit] Running tests..." >&2
+if ! bun test; then
+    echo "[pre-commit] Tests failed. Commit aborted." >&2
+    exit 1
+fi
+
+if git diff --cached --name-only | grep -qE '^(src|tests)/.*\.ts$'; then
+    echo "[pre-commit] Generating PROJECT_TREE.md..." >&2
+    ./scripts/generate-project-tree.sh
+    git add docs/PROJECT_TREE.md
+    echo "[pre-commit] Added PROJECT_TREE.md to this commit" >&2
+fi

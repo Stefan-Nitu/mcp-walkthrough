@@ -1,0 +1,9 @@
+node_modules
+dist
+*.log
+.DS_Store
+.claude
+vscode-extension/out
+vscode-extension/node_modules
+vscode-extension/*.vsix
+vscode-extension/package-lock.json
