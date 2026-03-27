@@ -80,7 +80,6 @@ describe("bridge unavailable", () => {
   test("all tools return error when bridge is down", async () => {
     // Arrange
     mockFetchError();
-    await checkBridge();
 
     // Act
     const results = await Promise.all([
@@ -96,24 +95,21 @@ describe("bridge unavailable", () => {
     // Assert
     for (const result of results) {
       expect(result.ok).toBe(false);
-      expect(result.error).toBe("This MCP server only works from VS Code.");
+      expect(typeof result.error).toBe("string");
     }
   });
 
-  test("does not make fetch calls when bridge is known unavailable", async () => {
-    // Arrange
+  test("retries on each call instead of caching failure", async () => {
+    // Arrange - first call fails
     mockFetchError();
-    await checkBridge();
-    const fetchSpy = mock(() =>
-      Promise.resolve(new Response("{}")),
-    ) as unknown as typeof fetch;
-    globalThis.fetch = fetchSpy;
-
-    // Act
     await openFile("/test.ts", 1);
 
+    // Act - bridge comes back
+    mockFetch({ ok: true });
+    const result = await openFile("/test.ts", 1);
+
     // Assert
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
   });
 });
 
@@ -249,20 +245,25 @@ describe("bridge available", () => {
   });
 });
 
-describe("bridge connection loss", () => {
-  test("marks bridge unavailable on fetch failure", async () => {
+describe("bridge connection loss and recovery", () => {
+  test("returns error on failure but recovers when bridge comes back", async () => {
     // Arrange
     mockFetch({ ok: true });
     await checkBridge();
     expect(isBridgeAvailable()).toBe(true);
 
+    // Act - bridge goes down
     mockFetchError();
+    const failResult = await openFile("/test.ts", 1);
 
-    // Act
-    const result = await openFile("/test.ts", 1);
+    // Assert - fails but doesn't permanently cache
+    expect(failResult.ok).toBe(false);
 
-    // Assert
-    expect(result.ok).toBe(false);
-    expect(isBridgeAvailable()).toBe(false);
+    // Act - bridge comes back
+    mockFetch({ ok: true });
+    const successResult = await openFile("/test.ts", 1);
+
+    // Assert - recovers
+    expect(successResult.ok).toBe(true);
   });
 });

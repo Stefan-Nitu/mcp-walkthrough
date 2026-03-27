@@ -66,26 +66,24 @@ export function isBridgeAvailable(): boolean {
   return bridgeAvailable === true;
 }
 
-const BRIDGE_UNAVAILABLE_ERROR = "This MCP server only works from VS Code.";
-
 async function bridgeRequest(
   endpoint: string,
   data: Record<string, unknown> = {},
 ): Promise<BridgeResult> {
-  if (bridgeAvailable === false) {
-    return { ok: false, error: BRIDGE_UNAVAILABLE_ERROR };
-  }
-
   try {
     const res = await fetch(`${BRIDGE_URL}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
+    bridgeAvailable = true;
     return (await res.json()) as BridgeResult;
   } catch {
-    bridgeAvailable = false;
-    return { ok: false, error: BRIDGE_UNAVAILABLE_ERROR };
+    return {
+      ok: false,
+      error:
+        "Could not reach VS Code. Make sure VS Code is open and reload the window if you just installed mcp-walkthrough.",
+    };
   }
 }
 
