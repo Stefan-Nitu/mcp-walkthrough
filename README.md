@@ -104,7 +104,7 @@ The main tool. Claude generates all steps and sends them at once. The VS Code ex
       "file": "/absolute/path/to/file.ts",
       "line": 10,
       "endLine": 25,
-      "explanation": "## Auth Middleware\n\nThis validates the JWT token on every request.",
+      "explanation": "This validates the JWT token on every request.\n\nThe `secret` is loaded from environment variables.",
       "title": "Token Validation"
     }
   ],
@@ -132,6 +132,14 @@ During an active walkthrough:
 - **Cmd+Shift+Right** — Next step
 - **Cmd+Shift+Left** — Previous step
 - **Status bar** — Shows current step, click to stop
+
+### Writing Explanations
+
+Explanations render as markdown in VS Code comment bubbles. Tips:
+
+- **Use actual newlines** for paragraphs, not `\n` escape sequences
+- **Avoid `##` headers** — they render very large in the comment bubble. Use **bold** instead
+- Inline code with backticks, code blocks, lists, and links all work
 
 ## How It Works
 

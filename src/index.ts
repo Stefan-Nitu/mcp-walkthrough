@@ -54,7 +54,7 @@ server.registerTool(
   "explain_code",
   {
     description:
-      "Open a file in VS Code, highlight lines, and show an inline markdown explanation bubble. Use this to walk the user through code with rich annotations.",
+      "Open a file in VS Code, highlight lines, and show an inline markdown explanation bubble. Renders as a VS Code comment widget. Use actual newlines for paragraphs, avoid ## headers (they render too large — use **bold** instead). Inline code, code blocks, lists, and links all work.",
     inputSchema: {
       file: z.string().describe("Absolute path to the file"),
       line: z.number().describe("Start line (1-based)"),
@@ -102,7 +102,7 @@ server.registerTool(
   "walkthrough",
   {
     description:
-      "Start a multi-step code walkthrough. Sends all steps to VS Code at once. The extension handles navigation — user clicks prev/next or uses Cmd+Shift+Left/Right. Optional autoplay with delay between steps. Returns current step state so you can navigate with walkthrough_navigate.",
+      "Start a multi-step code walkthrough. Sends all steps to VS Code at once. The extension handles navigation — user clicks prev/next or uses Cmd+Shift+Left/Right. Optional autoplay with delay between steps. Returns current step state so you can navigate with walkthrough_navigate. Explanation markdown renders as VS Code comment widgets — use actual newlines, avoid ## headers (too large — use **bold**), inline code and code blocks work.",
     inputSchema: {
       steps: z.array(stepSchema).describe("Array of walkthrough steps"),
       autoplay: z
