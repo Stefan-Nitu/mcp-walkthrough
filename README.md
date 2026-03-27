@@ -19,7 +19,7 @@ Text in a terminal isn't enough when you want Claude to explain a solution. MCP 
 - **Selection Reading** — Claude can see what you've highlighted to discuss it further
 - **Focus Preservation** — Opens files without stealing focus from your terminal
 
-> **Note:** This MCP server requires VS Code. It includes a companion VS Code extension that is automatically installed on first run.
+> **Note:** This MCP server requires VS Code. It includes a companion VS Code extension that is automatically installed when you `npm install`.
 
 ## Installation
 
