@@ -91,8 +91,10 @@ export async function openFile(
   file: string,
   line: number,
   endLine?: number,
+  startChar?: number,
+  endChar?: number,
 ): Promise<BridgeResult> {
-  return bridgeRequest("/open", { file, line, endLine });
+  return bridgeRequest("/open", { file, line, endLine, startChar, endChar });
 }
 
 export async function showExplanation(
@@ -101,8 +103,18 @@ export async function showExplanation(
   endLine: number | undefined,
   explanation: string,
   title?: string,
+  startChar?: number,
+  endChar?: number,
 ): Promise<BridgeResult> {
-  return bridgeRequest("/explain", { file, line, endLine, explanation, title });
+  return bridgeRequest("/explain", {
+    file,
+    line,
+    endLine,
+    explanation,
+    title,
+    startChar,
+    endChar,
+  });
 }
 
 export async function clearExplanations(): Promise<BridgeResult> {

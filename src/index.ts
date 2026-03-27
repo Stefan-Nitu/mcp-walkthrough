@@ -40,10 +40,18 @@ server.registerTool(
       file: z.string().describe("Absolute path to the file"),
       line: z.number().describe("Start line (1-based)"),
       endLine: z.number().optional().describe("End line (1-based)"),
+      startChar: z.number().optional().describe("Start character (0-based)"),
+      endChar: z.number().optional().describe("End character (0-based)"),
     },
   },
   async (args) => {
-    const result = await openFile(args.file, args.line, args.endLine);
+    const result = await openFile(
+      args.file,
+      args.line,
+      args.endLine,
+      args.startChar,
+      args.endChar,
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result) }],
     };
@@ -61,6 +69,8 @@ server.registerTool(
       endLine: z.number().optional().describe("End line (1-based)"),
       explanation: z.string().describe("Markdown explanation to display"),
       title: z.string().optional().describe("Title for the explanation"),
+      startChar: z.number().optional().describe("Start character (0-based)"),
+      endChar: z.number().optional().describe("End character (0-based)"),
     },
   },
   async (args) => {
@@ -70,6 +80,8 @@ server.registerTool(
       args.endLine,
       args.explanation,
       args.title,
+      args.startChar,
+      args.endChar,
     );
     return {
       content: [{ type: "text", text: JSON.stringify(result) }],

@@ -83,6 +83,8 @@ async function handleRequest(
         data.file as string,
         data.line as number,
         data.endLine as number | undefined,
+        data.startChar as number | undefined,
+        data.endChar as number | undefined,
       );
       return { ok: true };
 
@@ -93,6 +95,8 @@ async function handleRequest(
         data.endLine as number | undefined,
         data.explanation as string,
         data.title as string | undefined,
+        data.startChar as number | undefined,
+        data.endChar as number | undefined,
       );
       return { ok: true };
 
@@ -133,6 +137,8 @@ async function openFileAtLine(
   filePath: string,
   line: number,
   endLine?: number,
+  startChar?: number,
+  endChar?: number,
 ) {
   const activeTerminal = vscode.window.activeTerminal;
 
@@ -155,12 +161,10 @@ async function openFileAtLine(
   const startLine = Math.max(0, line - 1);
   const end = endLine ? Math.max(0, endLine - 1) : startLine;
 
-  const range = new vscode.Range(
-    startLine,
-    0,
-    end,
-    doc.lineAt(end).text.length,
-  );
+  const colStart = startChar ?? 0;
+  const colEnd = endChar ?? doc.lineAt(end).text.length;
+
+  const range = new vscode.Range(startLine, colStart, end, colEnd);
   editor.selection = new vscode.Selection(range.start, range.end);
   editor.revealRange(
     new vscode.Range(startLine, 0, startLine, 0),
@@ -174,9 +178,11 @@ async function showExplanation(
   endLine: number | undefined,
   explanation: string,
   title?: string,
+  startChar?: number,
+  endChar?: number,
 ) {
   clearAllThreads();
-  await openFileAtLine(filePath, line, endLine);
+  await openFileAtLine(filePath, line, endLine, startChar, endChar);
 
   const uri = vscode.Uri.file(filePath);
   const startLine = Math.max(0, line - 1);
