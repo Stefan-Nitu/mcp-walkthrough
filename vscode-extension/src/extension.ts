@@ -134,12 +134,23 @@ async function openFileAtLine(
   line: number,
   endLine?: number,
 ) {
+  const activeTerminal = vscode.window.activeTerminal;
+
   const uri = vscode.Uri.file(filePath);
   const doc = await vscode.workspace.openTextDocument(uri);
   const editor = await vscode.window.showTextDocument(doc, {
     preview: false,
     preserveFocus: true,
   });
+
+  vscode.commands.executeCommand("revealInExplorer", uri);
+  setTimeout(() => {
+    if (activeTerminal) {
+      activeTerminal.show(false);
+    } else {
+      vscode.commands.executeCommand("workbench.action.focusPanel");
+    }
+  }, 300);
 
   const startLine = Math.max(0, line - 1);
   const end = endLine ? Math.max(0, endLine - 1) : startLine;
