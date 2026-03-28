@@ -144,13 +144,14 @@ Explanations render as markdown in VS Code comment bubbles. Tips:
 ## How It Works
 
 ```
-Claude Code  →  MCP Server (stdio)  →  HTTP localhost:7890  →  VS Code Extension  →  Editor API
+Claude Code  →  MCP Server (stdio)  →  Unix socket  →  VS Code Extension  →  Editor API
 ```
 
 1. Claude calls walkthrough tools via MCP
-2. The MCP server forwards requests to a companion VS Code extension over HTTP
-3. The extension uses the VS Code API to open files, select ranges, and create comment threads
-4. Focus stays in your terminal — code appears in the editor beside it
+2. The MCP server discovers a workspace-specific Unix socket (`/tmp/walkthrough-bridge-<hash>.sock`)
+3. The VS Code extension listens on a socket derived from the workspace folder path
+4. Each VS Code window gets its own socket — multiple windows work independently
+5. Focus stays in your terminal — code appears in the editor beside it
 
 The VS Code extension is bundled with the npm package and automatically installed on first run.
 
@@ -162,7 +163,8 @@ The VS Code extension is bundled with the npm package and automatically installe
 mcp-walkthrough/
 ├── src/
 │   ├── index.ts              # MCP server entry point, tool registration
-│   ├── bridge.ts             # HTTP client to VS Code extension
+│   ├── bridge.ts             # Unix socket client to VS Code extension
+│   ├── socket.ts             # Socket path computation and discovery
 │   └── utils/
 │       └── logger.ts         # Pino logger (stderr only)
 ├── vscode-extension/
@@ -170,7 +172,8 @@ mcp-walkthrough/
 │   │   └── extension.ts      # VS Code extension (HTTP server, Comments API)
 │   └── package.json
 ├── tests/
-│   └── bridge.test.ts
+│   ├── bridge.test.ts
+│   └── socket.test.ts
 └── docs/
 ```
 
@@ -194,12 +197,13 @@ The build script syncs the version from root `package.json` into the extension b
 
 ## Troubleshooting
 
-### Tools return "This MCP server only works from VS Code."
+### Tools return "No walkthrough bridge socket found"
 
-The MCP server pings the VS Code extension on startup. If the extension isn't running:
+The MCP server discovers the VS Code extension via a Unix socket. If the socket isn't found:
 
 1. Make sure you're running Claude Code inside VS Code (not a standalone terminal)
 2. The extension activates on VS Code startup — try reloading the window (`Cmd+Shift+P` → "Reload Window")
+3. The socket is workspace-specific — make sure the VS Code window has a folder open
 
 ### Extension not installed
 

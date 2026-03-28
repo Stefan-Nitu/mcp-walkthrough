@@ -1,5 +1,8 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { rmSync } from "node:fs";
+import * as http from "node:http";
 import {
+  _setSocketPath,
   checkBridge,
   clearExplanations,
   getSelection,
@@ -11,38 +14,56 @@ import {
   showExplanation,
   startWalkthrough,
 } from "../src/bridge";
+import { socketPathForDir } from "../src/socket";
 
-const originalFetch = globalThis.fetch;
+const TEST_DIR = `/tmp/walkthrough-bridge-test-${process.pid}`;
+const SOCKET_PATH = socketPathForDir(TEST_DIR);
 
-function mockFetch(response: Record<string, unknown>, status = 200) {
-  globalThis.fetch = mock(() =>
-    Promise.resolve(
-      new Response(JSON.stringify(response), {
-        status,
-        headers: { "Content-Type": "application/json" },
-      }),
-    ),
-  ) as unknown as typeof fetch;
+let testServer: http.Server;
+let lastRequest: { url: string; body: Record<string, unknown> } | null = null;
+let serverResponse: Record<string, unknown> = { ok: true };
+
+function startTestServer(): Promise<void> {
+  return new Promise((resolve) => {
+    testServer = http.createServer(async (req, res) => {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      lastRequest = {
+        url: req.url || "",
+        body: body ? JSON.parse(body) : {},
+      };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(serverResponse));
+    });
+    testServer.listen(SOCKET_PATH, resolve);
+  });
 }
 
-function mockFetchError() {
-  globalThis.fetch = mock(() =>
-    Promise.reject(new Error("Connection refused")),
-  ) as unknown as typeof fetch;
+function stopTestServer(): Promise<void> {
+  return new Promise((resolve) => {
+    testServer?.close(() => {
+      rmSync(SOCKET_PATH, { force: true });
+      resolve();
+    });
+  });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   resetBridgeState();
+  lastRequest = null;
+  serverResponse = { ok: true };
+  await startTestServer();
+  _setSocketPath(SOCKET_PATH);
 });
 
-afterEach(() => {
-  globalThis.fetch = originalFetch;
+afterEach(async () => {
+  await stopTestServer();
 });
 
 describe("checkBridge", () => {
   test("returns true when bridge responds ok", async () => {
     // Arrange
-    mockFetch({ ok: true });
+    serverResponse = { ok: true };
 
     // Act
     const result = await checkBridge();
@@ -54,7 +75,8 @@ describe("checkBridge", () => {
 
   test("returns false when bridge is unreachable", async () => {
     // Arrange
-    mockFetchError();
+    await stopTestServer();
+    _setSocketPath("/tmp/nonexistent-socket.sock");
 
     // Act
     const result = await checkBridge();
@@ -62,11 +84,15 @@ describe("checkBridge", () => {
     // Assert
     expect(result).toBe(false);
     expect(isBridgeAvailable()).toBe(false);
+
+    // Restart for afterEach cleanup
+    await startTestServer();
+    _setSocketPath(SOCKET_PATH);
   });
 
   test("returns false when bridge responds without ok", async () => {
     // Arrange
-    mockFetch({ error: "something" });
+    serverResponse = { error: "something" };
 
     // Act
     const result = await checkBridge();
@@ -79,7 +105,8 @@ describe("checkBridge", () => {
 describe("bridge unavailable", () => {
   test("all tools return error when bridge is down", async () => {
     // Arrange
-    mockFetchError();
+    await stopTestServer();
+    _setSocketPath("/tmp/nonexistent-socket.sock");
 
     // Act
     const results = await Promise.all([
@@ -97,15 +124,22 @@ describe("bridge unavailable", () => {
       expect(result.ok).toBe(false);
       expect(typeof result.error).toBe("string");
     }
+
+    // Restart for afterEach cleanup
+    await startTestServer();
+    _setSocketPath(SOCKET_PATH);
   });
 
   test("retries on each call instead of caching failure", async () => {
-    // Arrange - first call fails
-    mockFetchError();
+    // Arrange - bridge down
+    await stopTestServer();
+    _setSocketPath("/tmp/nonexistent-socket.sock");
     await openFile("/test.ts", 1);
 
     // Act - bridge comes back
-    mockFetch({ ok: true });
+    await startTestServer();
+    _setSocketPath(SOCKET_PATH);
+    serverResponse = { ok: true };
     const result = await openFile("/test.ts", 1);
 
     // Assert
@@ -116,27 +150,24 @@ describe("bridge unavailable", () => {
 describe("bridge available", () => {
   test("openFile sends correct request", async () => {
     // Arrange
-    mockFetch({ ok: true });
-    await checkBridge();
-    mockFetch({ ok: true });
+    serverResponse = { ok: true };
 
     // Act
     const result = await openFile("/src/index.ts", 10, 20);
 
     // Assert
     expect(result).toEqual({ ok: true });
-    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock
-      .calls[0];
-    expect(call![0]).toContain("/open");
-    const body = JSON.parse(call![1]!.body as string);
-    expect(body).toEqual({ file: "/src/index.ts", line: 10, endLine: 20 });
+    expect(lastRequest?.url).toBe("/open");
+    expect(lastRequest?.body).toEqual({
+      file: "/src/index.ts",
+      line: 10,
+      endLine: 20,
+    });
   });
 
   test("showExplanation sends correct request", async () => {
     // Arrange
-    mockFetch({ ok: true });
-    await checkBridge();
-    mockFetch({ ok: true });
+    serverResponse = { ok: true };
 
     // Act
     const result = await showExplanation(
@@ -149,20 +180,14 @@ describe("bridge available", () => {
 
     // Assert
     expect(result).toEqual({ ok: true });
-    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock
-      .calls[0];
-    expect(call![0]).toContain("/explain");
-    const body = JSON.parse(call![1]!.body as string);
-    expect(body.explanation).toBe("## Explanation");
-    expect(body.title).toBe("Step 1");
+    expect(lastRequest?.url).toBe("/explain");
+    expect(lastRequest?.body.explanation).toBe("## Explanation");
+    expect(lastRequest?.body.title).toBe("Step 1");
   });
 
   test("startWalkthrough sends steps with autoplay config", async () => {
     // Arrange
-    mockFetch({ ok: true });
-    await checkBridge();
-    mockFetch({ active: true, currentStep: 0, totalSteps: 2 });
-
+    serverResponse = { active: true, currentStep: 0, totalSteps: 2 };
     const steps = [
       { file: "/a.ts", line: 1, explanation: "First" },
       {
@@ -180,60 +205,48 @@ describe("bridge available", () => {
     // Assert
     expect(result.active).toBe(true);
     expect(result.totalSteps).toBe(2);
-    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock
-      .calls[0];
-    const body = JSON.parse(call![1]!.body as string);
-    expect(body.steps).toHaveLength(2);
-    expect(body.autoplay).toBe(true);
-    expect(body.delayMs).toBe(3000);
+    expect(lastRequest?.url).toBe("/walkthrough");
+    expect(lastRequest?.body.steps).toHaveLength(2);
+    expect(lastRequest?.body.autoplay).toBe(true);
+    expect(lastRequest?.body.delayMs).toBe(3000);
   });
 
   test("navigateWalkthrough sends action", async () => {
     // Arrange
-    mockFetch({ ok: true });
-    await checkBridge();
-    mockFetch({ active: true, currentStep: 1, totalSteps: 3 });
+    serverResponse = { active: true, currentStep: 1, totalSteps: 3 };
 
     // Act
     const result = await navigateWalkthrough("next");
 
     // Assert
     expect(result.currentStep).toBe(1);
-    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock
-      .calls[0];
-    const body = JSON.parse(call![1]!.body as string);
-    expect(body.action).toBe("next");
+    expect(lastRequest?.url).toBe("/walkthrough/navigate");
+    expect(lastRequest?.body.action).toBe("next");
   });
 
   test("navigateWalkthrough goto sends step index", async () => {
     // Arrange
-    mockFetch({ ok: true });
-    await checkBridge();
-    mockFetch({ active: true, currentStep: 5, totalSteps: 10 });
+    serverResponse = { active: true, currentStep: 5, totalSteps: 10 };
 
     // Act
     const result = await navigateWalkthrough("goto", 5);
 
     // Assert
     expect(result.currentStep).toBe(5);
-    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock
-      .calls[0];
-    const body = JSON.parse(call![1]!.body as string);
-    expect(body.action).toBe("goto");
-    expect(body.step).toBe(5);
+    expect(lastRequest?.url).toBe("/walkthrough/navigate");
+    expect(lastRequest?.body.action).toBe("goto");
+    expect(lastRequest?.body.step).toBe(5);
   });
 
   test("getSelection returns selection data", async () => {
     // Arrange
-    mockFetch({ ok: true });
-    await checkBridge();
-    mockFetch({
+    serverResponse = {
       ok: true,
       file: "/src/index.ts",
       line: 5,
       endLine: 8,
       text: "const x = 1;",
-    });
+    };
 
     // Act
     const result = await getSelection();
@@ -248,19 +261,22 @@ describe("bridge available", () => {
 describe("bridge connection loss and recovery", () => {
   test("returns error on failure but recovers when bridge comes back", async () => {
     // Arrange
-    mockFetch({ ok: true });
+    serverResponse = { ok: true };
     await checkBridge();
     expect(isBridgeAvailable()).toBe(true);
 
     // Act - bridge goes down
-    mockFetchError();
+    await stopTestServer();
+    _setSocketPath("/tmp/nonexistent-socket.sock");
     const failResult = await openFile("/test.ts", 1);
 
-    // Assert - fails but doesn't permanently cache
+    // Assert - fails
     expect(failResult.ok).toBe(false);
 
     // Act - bridge comes back
-    mockFetch({ ok: true });
+    await startTestServer();
+    _setSocketPath(SOCKET_PATH);
+    serverResponse = { ok: true };
     const successResult = await openFile("/test.ts", 1);
 
     // Assert - recovers

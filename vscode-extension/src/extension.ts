@@ -1,8 +1,23 @@
+import { createHash } from "node:crypto";
+import { existsSync, unlinkSync } from "node:fs";
 import * as http from "node:http";
+import * as net from "node:net";
 import * as vscode from "vscode";
 
-const PORT = 7890;
+const SOCKET_DIR = "/tmp";
+const SOCKET_PREFIX = "walkthrough-bridge-";
+
+function socketPathForDir(dir: string): string {
+  const normalized = dir.replace(/\/+$/, "");
+  const hash = createHash("sha256")
+    .update(normalized)
+    .digest("hex")
+    .slice(0, 16);
+  return `${SOCKET_DIR}/${SOCKET_PREFIX}${hash}.sock`;
+}
+
 let server: http.Server | undefined;
+let socketPath: string | undefined;
 let commentController: vscode.CommentController;
 const activeThreads: vscode.CommentThread[] = [];
 
@@ -44,6 +59,17 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("walkthrough.stop", stopWalkthrough),
   );
 
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!workspaceFolder) {
+    vscode.window.showWarningMessage(
+      "Walkthrough bridge: no workspace folder open",
+    );
+    return;
+  }
+
+  socketPath = socketPathForDir(workspaceFolder);
+  cleanupStaleSocket(socketPath);
+
   server = http.createServer(async (req, res) => {
     if (req.method !== "POST" && req.method !== "GET") {
       res.writeHead(405);
@@ -64,13 +90,45 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  server.listen(PORT, "127.0.0.1", () => {
+  server.listen(socketPath, () => {
     vscode.window.showInformationMessage(
-      `Walkthrough bridge listening on port ${PORT}`,
+      `Walkthrough bridge listening on ${socketPath}`,
     );
   });
 
-  context.subscriptions.push({ dispose: () => server?.close() });
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    vscode.window.showErrorMessage(
+      `Walkthrough bridge failed to start: ${err.message}`,
+    );
+  });
+
+  context.subscriptions.push({
+    dispose: () => {
+      server?.close();
+      if (socketPath && existsSync(socketPath)) {
+        unlinkSync(socketPath);
+      }
+    },
+  });
+}
+
+function cleanupStaleSocket(path: string): void {
+  if (!existsSync(path)) return;
+
+  // Try connecting — if it fails, the socket is stale
+  const client = net.createConnection({ path }, () => {
+    client.destroy();
+    // Socket is live — another instance owns it, don't touch
+  });
+
+  client.on("error", () => {
+    // Stale socket — remove it
+    try {
+      unlinkSync(path);
+    } catch {
+      // ignore
+    }
+  });
 }
 
 async function handleRequest(
@@ -131,6 +189,9 @@ async function handleRequest(
 export function deactivate() {
   stopWalkthrough();
   server?.close();
+  if (socketPath && existsSync(socketPath)) {
+    unlinkSync(socketPath);
+  }
 }
 
 async function openFileAtLine(
@@ -213,7 +274,6 @@ async function showExplanation(
 
 function calculateDelay(explanation: string, baseDelay: number): number {
   if (baseDelay > 0) return baseDelay;
-  // ~200 words per minute reading speed, minimum 3s
   const words = explanation.split(/\s+/).length;
   const readingTimeMs = (words / 200) * 60 * 1000;
   return Math.max(3000, readingTimeMs);
@@ -260,7 +320,6 @@ async function navigateWalkthrough(
     return { ok: false, error: "No walkthrough active" };
   }
 
-  // Manual navigation stops autoplay
   autoplayEnabled = false;
   if (autoplayTimer) clearTimeout(autoplayTimer);
 

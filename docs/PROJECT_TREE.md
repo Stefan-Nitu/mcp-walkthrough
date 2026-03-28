@@ -2,7 +2,7 @@
 
 > **Auto-generated** - Run `scripts/generate-project-tree.sh` to update
 
-Last updated: 2026-03-27 23:20:49
+Last updated: 2026-03-28 22:01:55
 
 ## Directory Structure
 
@@ -22,9 +22,11 @@ Last updated: 2026-03-27 23:20:49
 |   |-- utils
 |   |   `-- logger.ts
 |   |-- bridge.ts
-|   `-- index.ts
+|   |-- index.ts
+|   `-- socket.ts
 |-- tests
-|   `-- bridge.test.ts
+|   |-- bridge.test.ts
+|   `-- socket.test.ts
 |-- vscode-extension
 |   |-- out
 |   |   |-- extension.js
@@ -43,11 +45,11 @@ Last updated: 2026-03-27 23:20:49
 |-- tsconfig.build.json
 `-- tsconfig.json
 
-9 directories, 26 files
+9 directories, 28 files
 ```
 
 ## Statistics
 
-- **Source files**: 3 TypeScript files
-- **Test files**: 1 TypeScript files
+- **Source files**: 4 TypeScript files
+- **Test files**: 2 TypeScript files
 

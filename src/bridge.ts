@@ -1,7 +1,9 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import * as http from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { discoverSocket } from "./socket.js";
 import { logger } from "./utils/logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -12,7 +14,6 @@ const VSIX_PATH = join(
   __dirname,
   "../vscode-extension/walkthrough-bridge.vsix",
 );
-const BRIDGE_URL = "http://127.0.0.1:7890";
 
 export function ensureExtensionInstalled(): void {
   try {
@@ -41,50 +42,88 @@ export function ensureExtensionInstalled(): void {
 type BridgeResult = Record<string, unknown>;
 
 export let bridgeAvailable: boolean | null = null;
+let socketPath: string | null = null;
 
 export function resetBridgeState(): void {
   bridgeAvailable = null;
+  socketPath = null;
+}
+
+// For testing: override socket path discovery
+export function _setSocketPath(path: string): void {
+  socketPath = path;
+}
+
+function resolveSocketPath(): string | null {
+  if (!socketPath) {
+    socketPath = discoverSocket();
+  }
+  return socketPath;
+}
+
+function socketRequest(
+  endpoint: string,
+  data: Record<string, unknown> = {},
+): Promise<BridgeResult> {
+  const resolved = resolveSocketPath();
+  if (!resolved) {
+    return Promise.resolve({
+      ok: false,
+      error:
+        "No walkthrough bridge socket found. Make sure VS Code is open with a workspace.",
+    });
+  }
+
+  return new Promise((resolve) => {
+    const body = JSON.stringify(data);
+    const req = http.request(
+      {
+        socketPath: resolved,
+        path: endpoint,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let responseData = "";
+        res.on("data", (chunk: Buffer) => {
+          responseData += chunk.toString();
+        });
+        res.on("end", () => {
+          try {
+            bridgeAvailable = true;
+            resolve(JSON.parse(responseData) as BridgeResult);
+          } catch {
+            resolve({ ok: false, error: "Invalid response from bridge" });
+          }
+        });
+      },
+    );
+
+    req.on("error", () => {
+      resolve({
+        ok: false,
+        error:
+          "Could not reach VS Code. Make sure VS Code is open and reload the window if you just installed mcp-walkthrough.",
+      });
+    });
+
+    req.write(body);
+    req.end();
+  });
 }
 
 export async function checkBridge(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BRIDGE_URL}/ping`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    });
-    const data = (await res.json()) as BridgeResult;
-    bridgeAvailable = data.ok === true;
-  } catch {
-    bridgeAvailable = false;
-  }
+  const result = await socketRequest("/ping");
+  bridgeAvailable = result.ok === true;
   logger.info({ bridgeAvailable }, "Bridge status");
   return bridgeAvailable;
 }
 
 export function isBridgeAvailable(): boolean {
   return bridgeAvailable === true;
-}
-
-async function bridgeRequest(
-  endpoint: string,
-  data: Record<string, unknown> = {},
-): Promise<BridgeResult> {
-  try {
-    const res = await fetch(`${BRIDGE_URL}${endpoint}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    bridgeAvailable = true;
-    return (await res.json()) as BridgeResult;
-  } catch {
-    return {
-      ok: false,
-      error:
-        "Could not reach VS Code. Make sure VS Code is open and reload the window if you just installed mcp-walkthrough.",
-    };
-  }
 }
 
 export async function openFile(
@@ -94,7 +133,7 @@ export async function openFile(
   startChar?: number,
   endChar?: number,
 ): Promise<BridgeResult> {
-  return bridgeRequest("/open", { file, line, endLine, startChar, endChar });
+  return socketRequest("/open", { file, line, endLine, startChar, endChar });
 }
 
 export async function showExplanation(
@@ -106,7 +145,7 @@ export async function showExplanation(
   startChar?: number,
   endChar?: number,
 ): Promise<BridgeResult> {
-  return bridgeRequest("/explain", {
+  return socketRequest("/explain", {
     file,
     line,
     endLine,
@@ -118,7 +157,7 @@ export async function showExplanation(
 }
 
 export async function clearExplanations(): Promise<BridgeResult> {
-  return bridgeRequest("/clear");
+  return socketRequest("/clear");
 }
 
 export interface WalkthroughStep {
@@ -134,20 +173,20 @@ export async function startWalkthrough(
   autoplay?: boolean,
   delayMs?: number,
 ): Promise<BridgeResult> {
-  return bridgeRequest("/walkthrough", { steps, autoplay, delayMs });
+  return socketRequest("/walkthrough", { steps, autoplay, delayMs });
 }
 
 export async function navigateWalkthrough(
   action: string,
   step?: number,
 ): Promise<BridgeResult> {
-  return bridgeRequest("/walkthrough/navigate", { action, step });
+  return socketRequest("/walkthrough/navigate", { action, step });
 }
 
 export async function getWalkthroughStatus(): Promise<BridgeResult> {
-  return bridgeRequest("/walkthrough/status");
+  return socketRequest("/walkthrough/status");
 }
 
 export async function getSelection(): Promise<BridgeResult> {
-  return bridgeRequest("/selection");
+  return socketRequest("/selection");
 }
