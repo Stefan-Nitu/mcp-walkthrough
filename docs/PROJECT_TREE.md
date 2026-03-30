@@ -2,7 +2,7 @@
 
 > **Auto-generated** - Run `scripts/generate-project-tree.sh` to update
 
-Last updated: 2026-03-28 22:01:55
+Last updated: 2026-03-30 19:21:00
 
 ## Directory Structure
 
@@ -17,15 +17,19 @@ Last updated: 2026-03-28 22:01:55
 |   `-- TESTING.md
 |-- scripts
 |   |-- generate-project-tree.sh
+|   |-- postinstall.cjs
 |   `-- test-open-file.ts
 |-- src
 |   |-- utils
 |   |   `-- logger.ts
 |   |-- bridge.ts
+|   |-- code-cli.ts
 |   |-- index.ts
 |   `-- socket.ts
 |-- tests
 |   |-- bridge.test.ts
+|   |-- code-cli.test.ts
+|   |-- postinstall.test.ts
 |   `-- socket.test.ts
 |-- vscode-extension
 |   |-- out
@@ -41,15 +45,16 @@ Last updated: 2026-03-28 22:01:55
 |-- CLAUDE.md
 |-- README.md
 |-- biome.json
+|-- package-lock.json
 |-- package.json
 |-- tsconfig.build.json
 `-- tsconfig.json
 
-9 directories, 28 files
+9 directories, 33 files
 ```
 
 ## Statistics
 
-- **Source files**: 4 TypeScript files
-- **Test files**: 2 TypeScript files
+- **Source files**: 5 TypeScript files
+- **Test files**: 4 TypeScript files
 

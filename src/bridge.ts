@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import * as http from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveAllCodeClis } from "./code-cli.js";
 import { discoverSocket } from "./socket.js";
 import { logger } from "./utils/logger.js";
 
@@ -16,14 +17,12 @@ const VSIX_PATH = join(
 );
 
 export function ensureExtensionInstalled(): void {
-  try {
-    const installed = execSync("code --list-extensions", { encoding: "utf-8" });
-    if (installed.includes(EXTENSION_ID)) {
-      logger.info("Walkthrough bridge extension already installed");
-      return;
-    }
-  } catch {
-    logger.warn("Could not check installed extensions");
+  const clis = resolveAllCodeClis();
+  if (clis.length === 0) {
+    logger.warn(
+      "Could not find VS Code CLI (code, code-insiders, or cursor). Install one or add it to PATH.",
+    );
+    return;
   }
 
   if (!existsSync(VSIX_PATH)) {
@@ -31,11 +30,27 @@ export function ensureExtensionInstalled(): void {
     return;
   }
 
-  try {
-    execSync(`code --install-extension "${VSIX_PATH}"`, { encoding: "utf-8" });
-    logger.info("Installed walkthrough bridge extension");
-  } catch (error) {
-    logger.error({ err: error }, "Failed to install extension");
+  for (const cli of clis) {
+    try {
+      const installed = execSync(`"${cli}" --list-extensions`, {
+        encoding: "utf-8",
+      });
+      if (installed.includes(EXTENSION_ID)) {
+        logger.info({ cli }, "Walkthrough bridge extension already installed");
+        continue;
+      }
+    } catch {
+      logger.warn({ cli }, "Could not check installed extensions");
+    }
+
+    try {
+      execSync(`"${cli}" --install-extension "${VSIX_PATH}"`, {
+        encoding: "utf-8",
+      });
+      logger.info({ cli }, "Installed walkthrough bridge extension");
+    } catch (error) {
+      logger.error({ cli, err: error }, "Failed to install extension");
+    }
   }
 }
 

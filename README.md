@@ -19,7 +19,7 @@ Text in a terminal isn't enough when you want Claude to explain a solution. MCP 
 - **Selection Reading** — Claude can see what you've highlighted to discuss it further
 - **Focus Preservation** — Opens files without stealing focus from your terminal
 
-> **Note:** This MCP server requires VS Code. It includes a companion VS Code extension that is automatically installed when you `npm install`.
+> **Note:** This MCP server requires VS Code, VS Code Insiders, or Cursor. It includes a companion VS Code extension that is automatically installed when you `npm install`. The CLI is auto-discovered even if `code` is not in your PATH.
 
 ## Installation
 
@@ -153,7 +153,7 @@ Claude Code  →  MCP Server (stdio)  →  Unix socket  →  VS Code Extension  
 4. Each VS Code window gets its own socket — multiple windows work independently
 5. Focus stays in your terminal — code appears in the editor beside it
 
-The VS Code extension is bundled with the npm package and automatically installed on first run.
+The VS Code extension is bundled with the npm package and automatically installed on `npm install` and on first server start. The CLI is auto-discovered across VS Code, VS Code Insiders, and Cursor on all platforms.
 
 ## Development
 
@@ -164,15 +164,20 @@ mcp-walkthrough/
 ├── src/
 │   ├── index.ts              # MCP server entry point, tool registration
 │   ├── bridge.ts             # Unix socket client to VS Code extension
+│   ├── code-cli.ts           # Cross-platform VS Code CLI discovery
 │   ├── socket.ts             # Socket path computation and discovery
 │   └── utils/
 │       └── logger.ts         # Pino logger (stderr only)
+├── scripts/
+│   └── postinstall.cjs       # Auto-installs extension on npm install
 ├── vscode-extension/
 │   ├── src/
 │   │   └── extension.ts      # VS Code extension (HTTP server, Comments API)
 │   └── package.json
 ├── tests/
 │   ├── bridge.test.ts
+│   ├── code-cli.test.ts
+│   ├── postinstall.test.ts
 │   └── socket.test.ts
 └── docs/
 ```
@@ -207,10 +212,16 @@ The MCP server discovers the VS Code extension via a Unix socket. If the socket 
 
 ### Extension not installed
 
-The MCP server auto-installs the extension on first run via `code --install-extension`. If this fails:
+The MCP server auto-discovers VS Code, VS Code Insiders, and Cursor CLIs — even when `code` isn't in your PATH. It searches:
 
-1. Verify the `code` CLI is available in your terminal
-2. Manually install: `code --install-extension path/to/walkthrough-bridge.vsix`
+- **macOS**: `/Applications/*.app/Contents/Resources/app/bin/`
+- **Linux**: `/usr/bin/`, `/usr/local/bin/`, `/snap/bin/`, `/opt/*/bin/`
+- **Windows**: `%LOCALAPPDATA%\Programs\*\bin\`
+
+The extension is installed into **all** found editors. If auto-install still fails:
+
+1. Manually install: `code --install-extension path/to/walkthrough-bridge.vsix`
+2. Or reload the VS Code window after installing the npm package
 
 ## Contributing
 
