@@ -18,6 +18,7 @@ import {
   startWalkthrough,
   type WalkthroughStep,
 } from "./bridge.js";
+import { speak, stopSpeaking, stripMarkdown } from "./tts.js";
 import { flushLogs, logger } from "./utils/logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -110,31 +111,81 @@ const stepSchema = z.object({
   title: z.string().optional().describe("Step title"),
 });
 
+// --- Walkthrough state ---
+
+let activeSteps: WalkthroughStep[] = [];
+let narrationAbort: AbortController | null = null;
+let paused = false;
+let pauseResolve: (() => void) | null = null;
+const config = { voice: true, showBubbles: true };
+
+async function runNarration(startIndex: number) {
+  narrationAbort = new AbortController();
+  const signal = narrationAbort.signal;
+
+  for (let i = startIndex; i < activeSteps.length; i++) {
+    if (signal.aborted) break;
+
+    while (paused && !signal.aborted) {
+      await new Promise<void>((r) => {
+        pauseResolve = r;
+      });
+      pauseResolve = null;
+    }
+    if (signal.aborted) break;
+
+    if (i > startIndex) {
+      await navigateWalkthrough("next");
+    }
+
+    if (config.voice) {
+      const step = activeSteps[i];
+      if (step) {
+        const text = stripMarkdown(step.explanation);
+        await speak(text);
+      }
+    }
+  }
+
+  narrationAbort = null;
+}
+
+function stopNarration() {
+  paused = false;
+  pauseResolve?.();
+  stopSpeaking();
+  narrationAbort?.abort();
+  narrationAbort = null;
+}
+
 server.registerTool(
   "walkthrough",
   {
     description:
-      "Start a multi-step code walkthrough. Sends all steps to VS Code at once. The extension handles navigation — user clicks prev/next or uses Cmd+Shift+Left/Right. Optional autoplay with delay between steps. Returns current step state so you can navigate with walkthrough_navigate. Explanation markdown renders as VS Code comment widgets — use actual newlines, avoid ## headers (too large — use **bold**), inline code and code blocks work.",
+      "Start a multi-step code walkthrough with voice narration. Opens files, highlights code, shows inline explanation bubbles, and reads each step aloud. Voice and bubbles are on by default. Returns immediately — narration runs in background. Control with walkthrough_control (next, prev, stop, pause, resume, toggle voice/bubbles). Write explanations as natural spoken language.",
     inputSchema: {
       steps: z.array(stepSchema).describe("Array of walkthrough steps"),
-      autoplay: z
+      voice: z
         .boolean()
         .optional()
-        .describe("Auto-advance through steps (default: false)"),
-      delayMs: z
-        .number()
+        .describe("Enable voice narration (default: true)"),
+      showBubbles: z
+        .boolean()
         .optional()
-        .describe(
-          "Delay between steps in ms when autoplay is on (default: 5000)",
-        ),
+        .describe("Show explanation bubbles (default: true)"),
     },
   },
   async (args) => {
-    const result = await startWalkthrough(
-      args.steps as WalkthroughStep[],
-      args.autoplay,
-      args.delayMs,
-    );
+    stopNarration();
+    activeSteps = args.steps as WalkthroughStep[];
+    if (args.voice !== undefined) config.voice = args.voice;
+    if (args.showBubbles !== undefined) config.showBubbles = args.showBubbles;
+    paused = false;
+
+    const result = await startWalkthrough(activeSteps, false);
+
+    runNarration(0);
+
     return {
       content: [{ type: "text", text: JSON.stringify(result) }],
     };
@@ -142,22 +193,82 @@ server.registerTool(
 );
 
 server.registerTool(
-  "walkthrough_navigate",
+  "walkthrough_control",
   {
     description:
-      "Navigate an active walkthrough. Use when the user says next, back, or asks to jump to a step. Returns the current step state.",
+      "Control an active walkthrough. Navigate (next/prev/goto), stop, pause, resume, or toggle voice and bubbles on the fly. Changes take effect immediately.",
     inputSchema: {
-      action: z.enum(["next", "prev", "goto"]).describe("Navigation action"),
+      action: z
+        .enum(["next", "prev", "goto", "stop", "pause", "resume"])
+        .optional()
+        .describe("Navigation or playback action"),
       step: z
         .number()
         .optional()
         .describe("Step index (0-based) for goto action"),
+      voice: z.boolean().optional().describe("Toggle voice narration on/off"),
+      showBubbles: z
+        .boolean()
+        .optional()
+        .describe("Toggle explanation bubbles on/off"),
     },
   },
   async (args) => {
-    const result = await navigateWalkthrough(args.action, args.step);
+    if (args.voice !== undefined) config.voice = args.voice;
+    if (args.showBubbles !== undefined) config.showBubbles = args.showBubbles;
+
+    if (args.action === "stop") {
+      stopNarration();
+      activeSteps = [];
+      return {
+        content: [
+          { type: "text", text: JSON.stringify({ ok: true, stopped: true }) },
+        ],
+      };
+    }
+
+    if (args.action === "pause") {
+      paused = true;
+      stopSpeaking();
+      return {
+        content: [
+          { type: "text", text: JSON.stringify({ ok: true, paused: true }) },
+        ],
+      };
+    }
+
+    if (args.action === "resume") {
+      paused = false;
+      pauseResolve?.();
+      return {
+        content: [
+          { type: "text", text: JSON.stringify({ ok: true, resumed: true }) },
+        ],
+      };
+    }
+
+    if (
+      args.action === "next" ||
+      args.action === "prev" ||
+      args.action === "goto"
+    ) {
+      stopNarration();
+      const result = await navigateWalkthrough(args.action, args.step);
+      const currentStep = result.currentStep as number;
+
+      if (result.active && config.voice) {
+        runNarration(currentStep);
+      }
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    }
+
     return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
+      content: [
+        { type: "text", text: JSON.stringify({ ok: true, ...config }) },
+      ],
     };
   },
 );
@@ -203,6 +314,7 @@ async function main() {
     if (cleanupStarted) return;
     cleanupStarted = true;
 
+    stopNarration();
     logger.info("Shutting down...");
     flushLogs();
 
