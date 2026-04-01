@@ -5,19 +5,22 @@
 
 # MCP Walkthrough
 
-An MCP server for interactive code walkthroughs. Claude drives the narrative — opens files, highlights code, shows inline explanations, and navigates step by step.
+An MCP server for interactive code walkthroughs with voice narration. Claude drives the narrative — opens files, highlights code, explains inline, and reads each step aloud using neural text-to-speech.
 
 ## Overview
 
-Text in a terminal isn't enough when you want Claude to explain a solution. MCP Walkthrough lets Claude open files in VS Code, highlight specific lines, and show rich markdown explanations right next to the code. Navigate at your own pace — forward, back, or let it autoplay.
+Text in a terminal isn't enough when you want Claude to explain a solution. MCP Walkthrough lets Claude open files in VS Code, highlight specific lines, show rich markdown explanations, and **narrate each step with a natural-sounding voice**. Navigate at your own pace — forward, back, pause, or let the voice guide you.
 
 **Key Features:**
+- **Voice Narration** — Neural text-to-speech reads each step aloud (400+ voices via Microsoft Edge TTS)
 - **Inline Explanations** — Markdown comment bubbles appear right next to highlighted code
-- **Multi-Step Walkthroughs** — Claude sends all steps at once, you navigate with keyboard shortcuts
-- **Autoplay** — Optional auto-advance with reading-speed-based timing
+- **Multi-Step Walkthroughs** — Claude sends all steps at once, voice auto-advances through them
+- **Live Controls** — Pause, resume, skip, stop, toggle voice/bubbles on the fly
+- **Voice Selection** — Choose your narrator, audition voices, preference persisted across sessions
 - **Keyboard Navigation** — `Cmd+Shift+Right` / `Cmd+Shift+Left` to navigate steps
 - **Selection Reading** — Claude can see what you've highlighted to discuss it further
 - **Focus Preservation** — Opens files without stealing focus from your terminal
+- **Offline Fallback** — Falls back to native TTS (`say`/`espeak`) when offline
 
 > **Note:** This MCP server requires VS Code, VS Code Insiders, or Cursor. It includes a companion VS Code extension that is automatically installed when you `npm install`. The CLI is auto-discovered even if `code` is not in your PATH.
 
@@ -78,24 +81,25 @@ MCP tools are deferred (loaded on-demand), so Claude may not use them automatica
 ```markdown
 ## Walkthrough MCP
 
-You have access to walkthrough tools via MCP. Use them to visually walk the user through code — open files, highlight lines, and show inline explanations in VS Code.
+You have access to walkthrough tools via MCP. Use them to visually walk the user through code with voice narration — open files, highlight lines, show inline explanations, and read each step aloud in VS Code.
 ```
 
 ## Available Tools
 
 | Tool | Description |
 |------|-------------|
-| **show_code** | Open a file and highlight specific lines |
-| **explain_code** | Highlight lines + show an inline markdown explanation bubble |
-| **clear_explanations** | Remove all explanation bubbles |
-| **walkthrough** | Start a multi-step walkthrough with all steps at once |
-| **walkthrough_navigate** | Navigate an active walkthrough (next/prev/goto) |
+| **walkthrough** | Start a voiced, multi-step code walkthrough |
+| **walkthrough_control** | Pause, resume, next, prev, stop, toggle voice/bubbles |
+| **walkthrough_voice** | Change narrator voice, audition voices, list available |
 | **walkthrough_status** | Get current walkthrough state |
+| **show_code** | Open a file and highlight specific lines |
+| **explain_code** | Highlight lines + show explanation bubble (+ voice if enabled) |
+| **clear_explanations** | Remove all explanation bubbles |
 | **get_selection** | Read the currently highlighted code in VS Code |
 
 ### walkthrough
 
-The main tool. Claude generates all steps and sends them at once. The VS Code extension handles navigation.
+The main tool. Claude generates all steps and sends them at once. Voice narration and explanation bubbles are on by default. Returns immediately — narration runs in the background.
 
 ```json
 {
@@ -104,42 +108,63 @@ The main tool. Claude generates all steps and sends them at once. The VS Code ex
       "file": "/absolute/path/to/file.ts",
       "line": 10,
       "endLine": 25,
-      "explanation": "This validates the JWT token on every request.\n\nThe `secret` is loaded from environment variables.",
+      "explanation": "This validates the JWT token on every request. The secret is loaded from environment variables.",
       "title": "Token Validation"
     }
   ],
-  "autoplay": false,
-  "delayMs": 5000
+  "voice": true,
+  "showBubbles": true
 }
 ```
 
 **Parameters:**
 - `steps` — Array of `{ file, line, endLine?, explanation, title? }`
-- `autoplay` — Auto-advance through steps (default: `false`)
-- `delayMs` — Delay between steps in ms when autoplay is on (default: calculated from reading speed)
+- `voice` — Enable voice narration (default: `true`)
+- `showBubbles` — Show inline explanation bubbles (default: `true`)
 
-### walkthrough_navigate
+Write explanations as **natural spoken language** — markdown is stripped before narration.
+
+### walkthrough_control
+
+Control an active walkthrough on the fly:
 
 ```json
 { "action": "next" }
 { "action": "prev" }
-{ "action": "goto", "step": 3 }
+{ "action": "pause" }
+{ "action": "resume" }
+{ "action": "stop" }
+{ "voice": false }
+{ "showBubbles": false }
 ```
+
+### walkthrough_voice
+
+Change the narrator voice. Speaks a sample so you hear the difference. Persisted across sessions.
+
+```json
+{ "voice": "en-US-GuyNeural" }
+{ "list": true, "locale": "en-US" }
+{ "audition": true, "locale": "en-US", "gender": "Female" }
+```
+
+Popular voices: `en-US-AriaNeural`, `en-US-MichelleNeural`, `en-US-AndrewNeural`, `en-US-GuyNeural`
 
 ### Keyboard Shortcuts
 
-During an active walkthrough:
-- **Cmd+Shift+Right** — Next step
-- **Cmd+Shift+Left** — Previous step
+During an active walkthrough (shown in the explanation bubble):
+- **Cmd+Shift+Right** (macOS) / **Ctrl+Shift+Right** (Linux/Windows) — Next step
+- **Cmd+Shift+Left** (macOS) / **Ctrl+Shift+Left** (Linux/Windows) — Previous step
 - **Status bar** — Shows current step, click to stop
 
 ### Writing Explanations
 
-Explanations render as markdown in VS Code comment bubbles. Tips:
+Explanations render as markdown in VS Code comment bubbles and are also narrated as speech. Tips:
 
+- **Write as natural speech** — the voice reads it aloud, so avoid heavy markdown
 - **Use actual newlines** for paragraphs, not `\n` escape sequences
-- **Avoid `##` headers** — they render very large in the comment bubble. Use **bold** instead
-- Inline code with backticks, code blocks, lists, and links all work
+- **Avoid `##` headers** — they render too large in the comment bubble. Use **bold** instead
+- Inline code, code blocks, lists, and links all work in bubbles
 
 ## How It Works
 
@@ -165,6 +190,7 @@ mcp-walkthrough/
 │   ├── index.ts              # MCP server entry point, tool registration
 │   ├── bridge.ts             # Unix socket client to VS Code extension
 │   ├── code-cli.ts           # Cross-platform VS Code CLI discovery
+│   ├── tts.ts                # Text-to-speech (Edge TTS + native fallback)
 │   ├── socket.ts             # Socket path computation and discovery
 │   └── utils/
 │       └── logger.ts         # Pino logger (stderr only)
@@ -178,7 +204,8 @@ mcp-walkthrough/
 │   ├── bridge.test.ts
 │   ├── code-cli.test.ts
 │   ├── postinstall.test.ts
-│   └── socket.test.ts
+│   ├── socket.test.ts
+│   └── tts.test.ts
 └── docs/
 ```
 

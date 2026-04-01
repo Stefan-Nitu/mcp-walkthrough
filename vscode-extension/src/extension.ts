@@ -355,11 +355,13 @@ async function showCurrentStep() {
   const stepLabel = `Step ${currentStepIndex + 1}/${walkthroughSteps.length}`;
   const title = step.title ? `${stepLabel}: ${step.title}` : stepLabel;
 
+  const modifier = process.platform === "darwin" ? "Cmd" : "Ctrl";
+  const controls = `\n\n---\n\`${modifier} Shift →\` Next · \`${modifier} Shift ←\` Prev`;
   await showExplanation(
     step.file,
     step.line,
     step.endLine,
-    step.explanation,
+    step.explanation + controls,
     title,
   );
   updateStatusBar();

@@ -18,7 +18,15 @@ import {
   startWalkthrough,
   type WalkthroughStep,
 } from "./bridge.js";
-import { speak, stopSpeaking, stripMarkdown } from "./tts.js";
+import {
+  cleanupTts,
+  getVoice,
+  listVoices,
+  setVoice,
+  speak,
+  stopSpeaking,
+  stripMarkdown,
+} from "./tts.js";
 import { flushLogs, logger } from "./utils/logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -84,6 +92,11 @@ server.registerTool(
       args.startChar,
       args.endChar,
     );
+    if (playback.voice) {
+      speak(stripMarkdown(args.explanation)).catch((err) =>
+        logger.warn({ err }, "TTS failed for explain_code"),
+      );
+    }
     return {
       content: [{ type: "text", text: JSON.stringify(result) }],
     };
@@ -117,7 +130,7 @@ let activeSteps: WalkthroughStep[] = [];
 let narrationAbort: AbortController | null = null;
 let paused = false;
 let pauseResolve: (() => void) | null = null;
-const config = { voice: true, showBubbles: true };
+const playback = { voice: true, showBubbles: true };
 
 async function runNarration(startIndex: number) {
   narrationAbort = new AbortController();
@@ -138,7 +151,7 @@ async function runNarration(startIndex: number) {
       await navigateWalkthrough("next");
     }
 
-    if (config.voice) {
+    if (playback.voice) {
       const step = activeSteps[i];
       if (step) {
         const text = stripMarkdown(step.explanation);
@@ -148,6 +161,11 @@ async function runNarration(startIndex: number) {
   }
 
   narrationAbort = null;
+
+  if (!signal.aborted) {
+    await navigateWalkthrough("next");
+    activeSteps = [];
+  }
 }
 
 function stopNarration() {
@@ -178,16 +196,22 @@ server.registerTool(
   async (args) => {
     stopNarration();
     activeSteps = args.steps as WalkthroughStep[];
-    if (args.voice !== undefined) config.voice = args.voice;
-    if (args.showBubbles !== undefined) config.showBubbles = args.showBubbles;
+    if (args.voice !== undefined) playback.voice = args.voice;
+    if (args.showBubbles !== undefined) playback.showBubbles = args.showBubbles;
     paused = false;
 
     const result = await startWalkthrough(activeSteps, false);
 
-    runNarration(0);
+    runNarration(0).catch((err) => logger.error({ err }, "Narration failed"));
 
     return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
+      content: [
+        { type: "text", text: JSON.stringify(result) },
+        {
+          type: "text",
+          text: "Controls: next | prev | pause | resume | stop — use walkthrough_control. Toggle voice/bubbles on the fly.",
+        },
+      ],
     };
   },
 );
@@ -214,8 +238,8 @@ server.registerTool(
     },
   },
   async (args) => {
-    if (args.voice !== undefined) config.voice = args.voice;
-    if (args.showBubbles !== undefined) config.showBubbles = args.showBubbles;
+    if (args.voice !== undefined) playback.voice = args.voice;
+    if (args.showBubbles !== undefined) playback.showBubbles = args.showBubbles;
 
     if (args.action === "stop") {
       stopNarration();
@@ -254,10 +278,15 @@ server.registerTool(
     ) {
       stopNarration();
       const result = await navigateWalkthrough(args.action, args.step);
-      const currentStep = result.currentStep as number;
 
-      if (result.active && config.voice) {
-        runNarration(currentStep);
+      if (
+        result.active &&
+        playback.voice &&
+        typeof result.currentStep === "number"
+      ) {
+        runNarration(result.currentStep).catch((err) =>
+          logger.error({ err }, "Narration failed"),
+        );
       }
 
       return {
@@ -267,7 +296,121 @@ server.registerTool(
 
     return {
       content: [
-        { type: "text", text: JSON.stringify({ ok: true, ...config }) },
+        { type: "text", text: JSON.stringify({ ok: true, ...playback }) },
+      ],
+    };
+  },
+);
+
+server.registerTool(
+  "walkthrough_voice",
+  {
+    description:
+      "Change the narration voice. Speaks a sample so you hear the difference. Persisted across sessions. Use audition=true to hear voices back-to-back. Filter by locale and gender.",
+    inputSchema: {
+      voice: z
+        .string()
+        .optional()
+        .describe("Voice name (e.g. en-US-GuyNeural, en-US-AriaNeural)"),
+      list: z
+        .boolean()
+        .optional()
+        .describe("List available voices without playing them"),
+      audition: z
+        .boolean()
+        .optional()
+        .describe("Play voices back-to-back so you can compare"),
+      locale: z
+        .string()
+        .optional()
+        .describe("Filter by locale prefix (e.g. 'en-US', 'en', 'de')"),
+      gender: z
+        .enum(["Male", "Female"])
+        .optional()
+        .describe("Filter by gender"),
+    },
+  },
+  async (args, extra) => {
+    const voices = await listVoices();
+    let filtered = args.locale
+      ? voices.filter((v) =>
+          v.locale.toLowerCase().startsWith(args.locale!.toLowerCase()),
+        )
+      : voices;
+    if (args.gender) {
+      filtered = filtered.filter((v) => v.gender === args.gender);
+    }
+
+    if (args.list) {
+      return {
+        content: [{ type: "text", text: JSON.stringify(filtered) }],
+      };
+    }
+
+    if (args.audition) {
+      const toAudition = args.locale
+        ? filtered
+        : filtered.filter((v) => v.locale === "en-US");
+      const originalVoice = getVoice();
+      const played: string[] = [];
+      const onAbort = () => stopSpeaking();
+      extra.signal?.addEventListener("abort", onAbort);
+      for (const v of toAudition) {
+        if (extra.signal?.aborted) break;
+        if (v.name.includes("Multilingual")) continue;
+        setVoice(v.name);
+        const name = v.name
+          .replace(/Neural$/, "")
+          .replace(/^[\w]+-[\w]+-/, "")
+          .replace(/-/g, " ");
+        await speak(
+          `I'm ${name}. Here's how I sound narrating a code walkthrough for you.`,
+        );
+        played.push(v.name);
+      }
+      extra.signal?.removeEventListener("abort", onAbort);
+      setVoice(originalVoice);
+      stopSpeaking();
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              ok: true,
+              auditioned: played,
+              currentVoice: originalVoice,
+            }),
+          },
+        ],
+      };
+    }
+
+    if (args.voice) {
+      setVoice(args.voice);
+      const name = args.voice.replace(/Neural$/, "").replace(/-/g, " ");
+      await speak(
+        `Hi, I'm ${name}. This is how I sound when narrating a code walkthrough.`,
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              ok: true,
+              voice: args.voice,
+              persisted: true,
+            }),
+          },
+        ],
+      };
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ currentVoice: getVoice() }),
+        },
       ],
     };
   },
@@ -315,6 +458,7 @@ async function main() {
     cleanupStarted = true;
 
     stopNarration();
+    cleanupTts();
     logger.info("Shutting down...");
     flushLogs();
 
