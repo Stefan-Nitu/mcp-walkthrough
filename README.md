@@ -150,6 +150,16 @@ Change the narrator voice. Speaks a sample so you hear the difference. Persisted
 
 Popular voices: `en-US-AriaNeural`, `en-US-MichelleNeural`, `en-US-AndrewNeural`, `en-US-GuyNeural`
 
+### Configuration
+
+All settings are persisted to `~/.walkthrough/config.json` and survive server restarts:
+
+- **voice** — Selected voice name (default: `en-US-AriaNeural`)
+- **voiceEnabled** — Voice narration on/off (default: `true`)
+- **showBubbles** — Explanation bubbles on/off (default: `true`)
+
+Toggle voice and bubbles on the fly via `walkthrough_control` — changes persist immediately.
+
 ### Keyboard Shortcuts
 
 During an active walkthrough (shown in the explanation bubble):
@@ -190,6 +200,7 @@ mcp-walkthrough/
 │   ├── index.ts              # MCP server entry point, tool registration
 │   ├── bridge.ts             # Unix socket client to VS Code extension
 │   ├── code-cli.ts           # Cross-platform VS Code CLI discovery
+│   ├── config.ts             # Persisted walkthrough settings (~/.walkthrough/)
 │   ├── tts.ts                # Text-to-speech (Edge TTS + native fallback)
 │   ├── socket.ts             # Socket path computation and discovery
 │   └── utils/

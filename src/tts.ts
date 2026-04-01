@@ -1,12 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 import { logger } from "./utils/logger.js";
@@ -14,51 +8,11 @@ import { logger } from "./utils/logger.js";
 let currentProcess: ChildProcess | null = null;
 let edgeTts: MsEdgeTTS | null = null;
 let edgeTtsDir: string | null = null;
+let currentVoice: string | null = null;
 let cachedVoices: { name: string; locale: string; gender: string }[] | null =
   null;
 
-const DEFAULT_VOICE = "en-US-AriaNeural";
-const CONFIG_DIR = join(homedir(), ".walkthrough");
-const CONFIG_PATH = join(CONFIG_DIR, "config.json");
-
-// --- Config persistence ---
-
-interface TtsConfig {
-  voice: string;
-}
-
-function loadConfig(): TtsConfig {
-  try {
-    if (existsSync(CONFIG_PATH)) {
-      const parsed = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
-      if (typeof parsed?.voice === "string") return parsed;
-    }
-  } catch (err) {
-    logger.warn({ err }, "Failed to load TTS config");
-  }
-  return { voice: DEFAULT_VOICE };
-}
-
-function saveConfig(cfg: TtsConfig): void {
-  try {
-    mkdirSync(CONFIG_DIR, { recursive: true });
-    writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
-  } catch (err) {
-    logger.warn({ err }, "Failed to save TTS config");
-  }
-}
-
-const config = loadConfig();
-
-export function getVoice(): string {
-  return config.voice;
-}
-
-export function setVoice(voice: string): void {
-  config.voice = voice;
-  saveConfig(config);
-  edgeTts = null;
-}
+// --- Voice list ---
 
 export async function listVoices(): Promise<
   { name: string; locale: string; gender: string }[]
@@ -91,7 +45,7 @@ export function stripMarkdown(text: string): string {
     .trim();
 }
 
-// --- Process runner (shared by playFile and _speak) ---
+// --- Process runner ---
 
 function runProcess(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve) => {
@@ -118,13 +72,14 @@ function runProcess(cmd: string, args: string[]): Promise<void> {
 
 // --- Edge TTS ---
 
-async function getEdgeTts(): Promise<MsEdgeTTS> {
-  if (!edgeTts) {
+async function getEdgeTts(voice: string): Promise<MsEdgeTTS> {
+  if (!edgeTts || currentVoice !== voice) {
     edgeTts = new MsEdgeTTS();
     await edgeTts.setMetadata(
-      config.voice,
+      voice,
       OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3,
     );
+    currentVoice = voice;
     edgeTtsDir = join(tmpdir(), `walkthrough-tts-${process.pid}`);
     mkdirSync(edgeTtsDir, { recursive: true });
   }
@@ -147,8 +102,8 @@ function getPlayerArgs(filePath: string): [string, string[]] | null {
   return null;
 }
 
-async function speakEdgeTts(text: string): Promise<void> {
-  const tts = await getEdgeTts();
+async function speakEdgeTts(text: string, voice: string): Promise<void> {
+  const tts = await getEdgeTts(voice);
   if (!edgeTtsDir) throw new Error("Edge TTS dir not initialized");
   const result = await tts.toFile(edgeTtsDir, text);
   const playerArgs = getPlayerArgs(result.audioFilePath);
@@ -177,9 +132,9 @@ function speakNative(text: string): Promise<void> {
 
 // --- Public API ---
 
-export async function speak(text: string): Promise<void> {
+export async function speak(text: string, voice: string): Promise<void> {
   try {
-    await speakEdgeTts(text);
+    await speakEdgeTts(text, voice);
   } catch (err) {
     logger.warn({ err }, "Edge TTS failed, falling back to native");
     await speakNative(text);

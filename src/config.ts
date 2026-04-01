@@ -1,0 +1,55 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { logger } from "./utils/logger.js";
+
+const CONFIG_DIR = join(homedir(), ".walkthrough");
+const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+
+export interface WalkthroughConfig {
+  voice: string;
+  voiceEnabled: boolean;
+  showBubbles: boolean;
+}
+
+const DEFAULTS: WalkthroughConfig = {
+  voice: "en-US-AriaNeural",
+  voiceEnabled: true,
+  showBubbles: true,
+};
+
+function load(): WalkthroughConfig {
+  try {
+    if (existsSync(CONFIG_PATH)) {
+      const parsed = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
+      if (typeof parsed?.voice === "string") {
+        return { ...DEFAULTS, ...parsed };
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, "Failed to load walkthrough config");
+  }
+  return { ...DEFAULTS };
+}
+
+function save(cfg: WalkthroughConfig): void {
+  try {
+    mkdirSync(CONFIG_DIR, { recursive: true });
+    writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+  } catch (err) {
+    logger.warn({ err }, "Failed to save walkthrough config");
+  }
+}
+
+const config = load();
+
+export function getConfig(): WalkthroughConfig {
+  return { ...config };
+}
+
+export function updateConfig(opts: Partial<WalkthroughConfig>): void {
+  if (opts.voice !== undefined) config.voice = opts.voice;
+  if (opts.voiceEnabled !== undefined) config.voiceEnabled = opts.voiceEnabled;
+  if (opts.showBubbles !== undefined) config.showBubbles = opts.showBubbles;
+  save(config);
+}

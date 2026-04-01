@@ -18,11 +18,10 @@ import {
   startWalkthrough,
   type WalkthroughStep,
 } from "./bridge.js";
+import { getConfig, updateConfig } from "./config.js";
 import {
   cleanupTts,
-  getVoice,
   listVoices,
-  setVoice,
   speak,
   stopSpeaking,
   stripMarkdown,
@@ -92,8 +91,8 @@ server.registerTool(
       args.startChar,
       args.endChar,
     );
-    if (playback.voice) {
-      speak(stripMarkdown(args.explanation)).catch((err) =>
+    if (getConfig().voiceEnabled) {
+      speak(stripMarkdown(args.explanation), getConfig().voice).catch((err) =>
         logger.warn({ err }, "TTS failed for explain_code"),
       );
     }
@@ -130,7 +129,6 @@ let activeSteps: WalkthroughStep[] = [];
 let narrationAbort: AbortController | null = null;
 let paused = false;
 let pauseResolve: (() => void) | null = null;
-const playback = { voice: true, showBubbles: true };
 
 async function runNarration(startIndex: number) {
   narrationAbort = new AbortController();
@@ -151,11 +149,11 @@ async function runNarration(startIndex: number) {
       await navigateWalkthrough("next");
     }
 
-    if (playback.voice) {
+    if (getConfig().voiceEnabled) {
       const step = activeSteps[i];
       if (step) {
         const text = stripMarkdown(step.explanation);
-        await speak(text);
+        await speak(text, getConfig().voice);
       }
     }
   }
@@ -196,8 +194,7 @@ server.registerTool(
   async (args) => {
     stopNarration();
     activeSteps = args.steps as WalkthroughStep[];
-    if (args.voice !== undefined) playback.voice = args.voice;
-    if (args.showBubbles !== undefined) playback.showBubbles = args.showBubbles;
+    updateConfig({ voiceEnabled: args.voice, showBubbles: args.showBubbles });
     paused = false;
 
     const result = await startWalkthrough(activeSteps, false);
@@ -238,8 +235,7 @@ server.registerTool(
     },
   },
   async (args) => {
-    if (args.voice !== undefined) playback.voice = args.voice;
-    if (args.showBubbles !== undefined) playback.showBubbles = args.showBubbles;
+    updateConfig({ voiceEnabled: args.voice, showBubbles: args.showBubbles });
 
     if (args.action === "stop") {
       stopNarration();
@@ -281,7 +277,7 @@ server.registerTool(
 
       if (
         result.active &&
-        playback.voice &&
+        getConfig().voiceEnabled &&
         typeof result.currentStep === "number"
       ) {
         runNarration(result.currentStep).catch((err) =>
@@ -296,7 +292,7 @@ server.registerTool(
 
     return {
       content: [
-        { type: "text", text: JSON.stringify({ ok: true, ...playback }) },
+        { type: "text", text: JSON.stringify({ ok: true, ...getConfig() }) },
       ],
     };
   },
@@ -351,25 +347,26 @@ server.registerTool(
       const toAudition = args.locale
         ? filtered
         : filtered.filter((v) => v.locale === "en-US");
-      const originalVoice = getVoice();
+      const originalVoice = getConfig().voice;
       const played: string[] = [];
       const onAbort = () => stopSpeaking();
       extra.signal?.addEventListener("abort", onAbort);
       for (const v of toAudition) {
         if (extra.signal?.aborted) break;
         if (v.name.includes("Multilingual")) continue;
-        setVoice(v.name);
+        updateConfig({ voice: v.name });
         const name = v.name
           .replace(/Neural$/, "")
           .replace(/^[\w]+-[\w]+-/, "")
           .replace(/-/g, " ");
         await speak(
           `I'm ${name}. Here's how I sound narrating a code walkthrough for you.`,
+          v.name,
         );
         played.push(v.name);
       }
       extra.signal?.removeEventListener("abort", onAbort);
-      setVoice(originalVoice);
+      updateConfig({ voice: originalVoice });
       stopSpeaking();
       return {
         content: [
@@ -386,10 +383,11 @@ server.registerTool(
     }
 
     if (args.voice) {
-      setVoice(args.voice);
+      updateConfig({ voice: args.voice });
       const name = args.voice.replace(/Neural$/, "").replace(/-/g, " ");
       await speak(
         `Hi, I'm ${name}. This is how I sound when narrating a code walkthrough.`,
+        args.voice,
       );
       return {
         content: [
@@ -409,7 +407,7 @@ server.registerTool(
       content: [
         {
           type: "text",
-          text: JSON.stringify({ currentVoice: getVoice() }),
+          text: JSON.stringify({ currentVoice: getConfig().voice }),
         },
       ],
     };
