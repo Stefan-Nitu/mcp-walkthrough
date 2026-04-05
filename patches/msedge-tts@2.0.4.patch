@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index 4ad6641caeed421d54fa64f07ccbc2d9643cdb6f..237b7dbe7992e5e3ebc285287627d986f48db95f 100644
+--- a/package.json
++++ b/package.json
+@@ -51,7 +51,7 @@
+     "dist/"
+   ],
+   "scripts": {
+-    "preinstall": "npx only-allow pnpm",
++    "preinstall": "",
+     "dev": "pnpm run build && ts-node src/test/test.ts",
+     "build": "tsc",
+     "test": "jest",

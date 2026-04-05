@@ -2,7 +2,7 @@
 
 > **Auto-generated** - Run `scripts/generate-project-tree.sh` to update
 
-Last updated: 2026-04-01 23:01:46
+Last updated: 2026-04-05 18:25:12
 
 ## Directory Structure
 
@@ -15,6 +15,8 @@ Last updated: 2026-04-01 23:01:46
 |   |-- PROJECT_TREE.md
 |   |-- TDD.md
 |   `-- TESTING.md
+|-- patches
+|   `-- msedge-tts@2.0.4.patch
 |-- scripts
 |   |-- generate-project-tree.sh
 |   |-- postinstall.cjs
@@ -35,16 +37,10 @@ Last updated: 2026-04-01 23:01:46
 |   |-- socket.test.ts
 |   `-- tts.test.ts
 |-- vscode-extension
-|   |-- out
-|   |   |-- extension.js
-|   |   `-- extension.js.map
 |   |-- src
 |   |   `-- extension.ts
-|   |-- package-lock.json
 |   |-- package.json
-|   |-- tsconfig.json
-|   |-- walkthrough-bridge-0.0.1.vsix
-|   `-- walkthrough-bridge.vsix
+|   `-- tsconfig.json
 |-- CLAUDE.md
 |-- README.md
 |-- biome.json
@@ -53,7 +49,7 @@ Last updated: 2026-04-01 23:01:46
 |-- tsconfig.build.json
 `-- tsconfig.json
 
-9 directories, 36 files
+9 directories, 32 files
 ```
 
 ## Statistics

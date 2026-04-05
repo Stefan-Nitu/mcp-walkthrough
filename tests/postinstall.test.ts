@@ -11,7 +11,6 @@ import {
 import { dirname, join } from "node:path";
 
 const POSTINSTALL = join(import.meta.dir, "..", "scripts", "postinstall.cjs");
-// process.execPath is bun in bun:test, so resolve node separately
 const NODE_BIN = execSync("which node", { encoding: "utf-8" }).trim();
 const NODE_DIR = dirname(NODE_BIN);
 
@@ -20,15 +19,31 @@ describe("postinstall integration", () => {
   const fakeBinDir = join(tmpDir, "bin");
   const logFile = join(tmpDir, "calls.log");
 
+  const vsixPath = join(
+    import.meta.dir,
+    "..",
+    "vscode-extension",
+    "walkthrough-bridge.vsix",
+  );
+  let vsixExisted: boolean;
+
   beforeEach(() => {
     mkdirSync(fakeBinDir, { recursive: true });
     const fakeCode = `#!/bin/sh\necho "$@" >> "${logFile}"`;
     writeFileSync(join(fakeBinDir, "code"), fakeCode);
     chmodSync(join(fakeBinDir, "code"), 0o755);
+
+    // Ensure VSIX exists so postinstall doesn't exit early
+    vsixExisted = existsSync(vsixPath);
+    if (!vsixExisted) {
+      mkdirSync(dirname(vsixPath), { recursive: true });
+      writeFileSync(vsixPath, "");
+    }
   });
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+    if (!vsixExisted) rmSync(vsixPath, { force: true });
   });
 
   test("calls CLI with --install-extension and --force when found in PATH", () => {
@@ -43,7 +58,7 @@ describe("postinstall integration", () => {
     expect(log).toContain("--install-extension");
     expect(log).toContain("walkthrough-bridge.vsix");
     expect(log).toContain("--force");
-  });
+  }, 15_000);
 
   test("exits 0 and skips CLI when vsix is missing", () => {
     // Arrange

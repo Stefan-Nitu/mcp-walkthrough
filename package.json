@@ -1,6 +1,6 @@
 {
   "name": "mcp-walkthrough",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "MCP server for interactive code walkthroughs - Claude-driven code tours",
   "type": "module",
   "main": "dist/index.js",
@@ -55,5 +55,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "patchedDependencies": {
+    "msedge-tts@2.0.4": "patches/msedge-tts@2.0.4.patch"
   }
 }
