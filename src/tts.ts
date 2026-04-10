@@ -90,14 +90,11 @@ function getPlayerArgs(filePath: string): [string, string[]] | null {
   if (process.platform === "darwin") return ["afplay", [filePath]];
   if (process.platform === "linux") return ["mpg123", ["-q", filePath]];
   if (process.platform === "win32") {
-    const escaped = filePath.replace(/'/g, "''");
-    return [
-      "powershell",
-      [
-        "-Command",
-        `Add-Type -AssemblyName presentationCore; $p = New-Object System.Windows.Media.MediaPlayer; $p.Open([Uri]'${escaped}'); $p.Play(); Start-Sleep -Seconds 300`,
-      ],
-    ];
+    const b64 = Buffer.from(
+      `Add-Type -AssemblyName presentationCore; $p = New-Object System.Windows.Media.MediaPlayer; $p.Open([Uri]"${filePath.replace(/"/g, '`"')}"); $p.Play(); Start-Sleep -Seconds 300`,
+      "utf16le",
+    ).toString("base64");
+    return ["powershell", ["-EncodedCommand", b64]];
   }
   return null;
 }
@@ -121,11 +118,11 @@ function speakNative(text: string): Promise<void> {
   if (process.platform === "darwin") return runProcess("say", [text]);
   if (process.platform === "linux") return runProcess("espeak", [text]);
   if (process.platform === "win32") {
-    const escaped = text.replace(/'/g, "''");
-    return runProcess("powershell", [
-      "-Command",
-      `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('${escaped}')`,
-    ]);
+    const b64 = Buffer.from(
+      `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak("${text.replace(/"/g, '`"')}")`,
+      "utf16le",
+    ).toString("base64");
+    return runProcess("powershell", ["-EncodedCommand", b64]);
   }
   return Promise.resolve();
 }

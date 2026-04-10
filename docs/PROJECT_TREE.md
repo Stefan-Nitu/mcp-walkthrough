@@ -2,7 +2,7 @@
 
 > **Auto-generated** - Run `scripts/generate-project-tree.sh` to update
 
-Last updated: 2026-04-05 18:25:12
+Last updated: 2026-04-11 00:54:50
 
 ## Directory Structure
 
@@ -12,6 +12,7 @@ Last updated: 2026-04-05 18:25:12
 |   |-- ARCHITECTURE.md
 |   |-- ERROR-HANDLING.md
 |   |-- MCP.md
+|   |-- PLAN.md
 |   |-- PROJECT_TREE.md
 |   |-- TDD.md
 |   `-- TESTING.md
@@ -37,19 +38,33 @@ Last updated: 2026-04-05 18:25:12
 |   |-- socket.test.ts
 |   `-- tts.test.ts
 |-- vscode-extension
+|   |-- out
+|   |   |-- editor.js
+|   |   |-- editor.js.map
+|   |   |-- explanations.js
+|   |   |-- explanations.js.map
+|   |   |-- extension.js
+|   |   |-- extension.js.map
+|   |   |-- walkthrough.js
+|   |   `-- walkthrough.js.map
 |   |-- src
-|   |   `-- extension.ts
+|   |   |-- editor.ts
+|   |   |-- explanations.ts
+|   |   |-- extension.ts
+|   |   `-- walkthrough.ts
+|   |-- package-lock.json
 |   |-- package.json
-|   `-- tsconfig.json
-|-- CLAUDE.md
-|-- README.md
+|   |-- tsconfig.json
+|   `-- walkthrough-bridge.vsix
 |-- biome.json
+|-- CLAUDE.md
 |-- package-lock.json
 |-- package.json
+|-- README.md
 |-- tsconfig.build.json
 `-- tsconfig.json
 
-9 directories, 32 files
+10 directories, 46 files
 ```
 
 ## Statistics

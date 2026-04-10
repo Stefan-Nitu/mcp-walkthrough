@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import * as vscode from "vscode";
 
 type Result = Record<string, unknown>;
@@ -9,6 +10,14 @@ export async function openFileAtLine(
   startChar?: number,
   endChar?: number,
 ): Promise<void> {
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (workspaceRoot) {
+    const resolved = resolve(filePath);
+    if (!resolved.startsWith(`${workspaceRoot}/`)) {
+      throw new Error("File path outside workspace");
+    }
+  }
+
   const activeTerminal = vscode.window.activeTerminal;
 
   const uri = vscode.Uri.file(filePath);
