@@ -18,6 +18,18 @@ if ! bun test; then
     exit 1
 fi
 
+if git diff --cached --name-only | grep -q '^package.json$'; then
+    echo "[pre-commit] Syncing version to vscode-extension/package.json..." >&2
+    node -e "
+      const fs = require('fs');
+      const v = require('./package.json').version;
+      const path = 'vscode-extension/package.json';
+      const p = JSON.parse(fs.readFileSync(path, 'utf-8'));
+      if (p.version !== v) { p.version = v; fs.writeFileSync(path, JSON.stringify(p, null, 2) + '\n'); }
+    "
+    git add vscode-extension/package.json
+fi
+
 if git diff --cached --name-only | grep -qE '^(src|tests)/.*\.ts$'; then
     echo "[pre-commit] Generating PROJECT_TREE.md..." >&2
     ./scripts/generate-project-tree.sh
