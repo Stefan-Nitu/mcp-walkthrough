@@ -2,7 +2,7 @@
   "name": "walkthrough-bridge",
   "displayName": "Walkthrough Bridge",
   "description": "Bridge between mcp-walkthrough and VS Code editor API",
-  "version": "0.2.1",
+  "version": "0.2.5",
   "engines": {
     "vscode": "^1.100.0"
   },
