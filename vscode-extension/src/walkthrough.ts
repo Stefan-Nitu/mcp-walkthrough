@@ -125,7 +125,7 @@ export function createWalkthrough(
     const title = step.title ? `${stepLabel}: ${step.title}` : stepLabel;
 
     const modifier = process.platform === "darwin" ? "Cmd" : "Ctrl";
-    const controls = `\n\n---\n\`${modifier} Shift →\` Next · \`${modifier} Shift ←\` Prev`;
+    const controls = `\n\n---\n\`${modifier}+Shift+→\` **Next** &nbsp;&nbsp; **|** &nbsp;&nbsp; \`${modifier}+Shift+←\` **Prev** &nbsp;&nbsp; **|** &nbsp;&nbsp; \`${modifier}+Shift+↓\` **Stop**`;
     await explanations.show(
       step.file,
       step.line,

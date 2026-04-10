@@ -36,19 +36,16 @@ export function createExplanations(
     endChar?: number,
   ) {
     clear();
-    await openFileAtLine(filePath, line, endLine, startChar, endChar, {
-      refocusTerminal: false,
-    });
+    await openFileAtLine(filePath, line, endLine, startChar, endChar);
 
     const uri = vscode.Uri.file(filePath);
     const startLine = Math.max(0, line - 1);
     const end = endLine ? Math.max(0, endLine - 1) : startLine;
     const range = new vscode.Range(startLine, 0, end, 0);
 
-    const sanitized = explanation.replace(
-      /\[([^\]]*)\]\(command:[^)]*\)/g,
-      "$1",
-    );
+    const sanitized = explanation
+      .replace(/\\n/g, "\n")
+      .replace(/\[([^\]]*)\]\(command:[^)]*\)/g, "$1");
     const body = new vscode.MarkdownString(sanitized, true);
     body.isTrusted = true;
     body.supportThemeIcons = true;

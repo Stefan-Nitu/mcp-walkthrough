@@ -2,7 +2,7 @@
 
 > **Auto-generated** - Run `scripts/generate-project-tree.sh` to update
 
-Last updated: 2026-04-11 01:16:05
+Last updated: 2026-04-11 02:21:31
 
 ## Directory Structure
 
@@ -10,6 +10,7 @@ Last updated: 2026-04-11 01:16:05
 .
 |-- docs
 |   |-- ARCHITECTURE.md
+|   |-- DEV_NOTES.md
 |   |-- ERROR-HANDLING.md
 |   |-- MCP.md
 |   |-- PLAN.md
@@ -64,7 +65,7 @@ Last updated: 2026-04-11 01:16:05
 |-- tsconfig.build.json
 `-- tsconfig.json
 
-10 directories, 46 files
+10 directories, 47 files
 ```
 
 ## Statistics

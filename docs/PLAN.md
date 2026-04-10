@@ -32,6 +32,11 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
   - `autoplayDelay` — user-configured additive linger time (default 0)
 - Different strategies for reading_time — TBD
 
+### Sub-range highlighting during narration
+- Each walkthrough step highlights specific line ranges within the code as TTS narrates
+- Explanation carries sub-ranges that map to sections of the narration
+- VS Code extension updates the selection as narration progresses (karaoke effect for code)
+
 ### ~~Extract modular core~~ (done)
 - Split into `editor.ts`, `explanations.ts`, `walkthrough.ts`
 - `extension.ts` is thin wiring

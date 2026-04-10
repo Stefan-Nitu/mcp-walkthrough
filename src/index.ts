@@ -75,7 +75,11 @@ server.registerTool(
       file: z.string().describe("Absolute path to the file"),
       line: z.number().describe("Start line (1-based)"),
       endLine: z.number().optional().describe("End line (1-based)"),
-      explanation: z.string().describe("Markdown explanation to display"),
+      explanation: z
+        .string()
+        .describe(
+          "Markdown explanation. Use real newlines for paragraphs, NOT literal backslash-n. Avoid ## headers (too large) — use **bold** instead.",
+        ),
       title: z.string().optional().describe("Title for the explanation"),
       startChar: z.number().optional().describe("Start character (0-based)"),
       endChar: z.number().optional().describe("End character (0-based)"),
@@ -91,7 +95,7 @@ server.registerTool(
       args.startChar,
       args.endChar,
     );
-    if (getConfig().voiceEnabled) {
+    if (result.ok !== false && getConfig().voiceEnabled) {
       speak(stripMarkdown(args.explanation), getConfig().voice).catch((err) =>
         logger.warn({ err }, "TTS failed for explain_code"),
       );
@@ -119,7 +123,11 @@ const stepSchema = z.object({
   file: z.string().describe("Absolute path to the file"),
   line: z.number().describe("Start line (1-based)"),
   endLine: z.number().optional().describe("End line (1-based)"),
-  explanation: z.string().describe("Markdown explanation"),
+  explanation: z
+    .string()
+    .describe(
+      "Markdown explanation. Write as natural spoken language — this gets narrated by TTS. Use real newlines, NOT literal backslash-n.",
+    ),
   title: z.string().optional().describe("Step title"),
 });
 
@@ -146,6 +154,7 @@ async function runNarration(startIndex: number) {
     if (signal.aborted) break;
 
     if (i > startIndex) {
+      if (!getConfig().autoplay) break;
       await navigateWalkthrough("next");
     }
 
@@ -173,78 +182,40 @@ server.registerTool(
   "walkthrough",
   {
     description:
-      "Start a multi-step code walkthrough with voice narration. Opens files, highlights code, shows inline explanation bubbles, and reads each step aloud. Voice and bubbles are on by default. Returns immediately — narration runs in background. Control with walkthrough_control (next, prev, stop, pause, resume, toggle voice/bubbles). Write explanations as natural spoken language.",
+      "Start or control a multi-step code walkthrough. Pass steps to start. Pass action to navigate (next/prev/goto/stop/pause/resume). Uses global voice/bubble settings from the settings tool.",
     inputSchema: {
-      steps: z.array(stepSchema).describe("Array of walkthrough steps"),
-      voice: z
-        .boolean()
+      steps: z
+        .array(stepSchema)
         .optional()
-        .describe("Enable voice narration (default: true)"),
-      showBubbles: z
-        .boolean()
-        .optional()
-        .describe("Show explanation bubbles (default: true)"),
-    },
-  },
-  async (args) => {
-    stopNarration();
-    activeSteps = args.steps as WalkthroughStep[];
-    updateConfig({ voiceEnabled: args.voice, showBubbles: args.showBubbles });
-    paused = false;
-
-    const result = await startWalkthrough(activeSteps, false);
-
-    if (result.ok !== false) {
-      runNarration(0).catch((err) => logger.error({ err }, "Narration failed"));
-    }
-
-    return {
-      content: [
-        { type: "text", text: JSON.stringify(result) },
-        {
-          type: "text",
-          text: "Controls: next | prev | pause | resume | stop — use walkthrough_control. Toggle voice/bubbles on the fly.",
-        },
-      ],
-    };
-  },
-);
-
-server.registerTool(
-  "walkthrough_control",
-  {
-    description:
-      "Control an active walkthrough. Navigate (next/prev/goto), stop, pause, resume, or toggle voice and bubbles on the fly. Changes take effect immediately.",
-    inputSchema: {
+        .describe("Array of walkthrough steps (starts a new walkthrough)"),
       action: z
         .enum(["next", "prev", "goto", "stop", "pause", "resume"])
         .optional()
-        .describe("Navigation or playback action"),
+        .describe("Navigate or control an active walkthrough"),
       step: z
         .number()
         .optional()
         .describe("Step index (0-based) for goto action"),
-      voice: z.boolean().optional().describe("Toggle voice narration on/off"),
-      showBubbles: z
-        .boolean()
-        .optional()
-        .describe("Toggle explanation bubbles on/off"),
-      autoplay: z.boolean().optional().describe("Toggle autoplay on/off"),
-      autoplayDelay: z
-        .number()
-        .optional()
-        .describe(
-          "Additive delay in ms on top of reading/TTS time (0 = no extra delay)",
-        ),
     },
   },
   async (args) => {
-    updateConfig({
-      voiceEnabled: args.voice,
-      showBubbles: args.showBubbles,
-      autoplay: args.autoplay,
-      autoplayDelay: args.autoplayDelay,
-    });
+    if (args.steps) {
+      stopNarration();
+      activeSteps = args.steps as WalkthroughStep[];
+      paused = false;
+
+      const result = await startWalkthrough(activeSteps, false);
+
+      if (result.ok !== false) {
+        runNarration(0).catch((err) =>
+          logger.error({ err }, "Narration failed"),
+        );
+      }
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    }
 
     if (args.action === "stop") {
       stopNarration();
@@ -298,6 +269,42 @@ server.registerTool(
         content: [{ type: "text", text: JSON.stringify(result) }],
       };
     }
+
+    return {
+      content: [
+        { type: "text", text: JSON.stringify(await getWalkthroughStatus()) },
+      ],
+    };
+  },
+);
+
+server.registerTool(
+  "settings",
+  {
+    description:
+      "View or update global settings: voice narration, explanation bubbles, autoplay, autoplay delay. Changes persist across sessions.",
+    inputSchema: {
+      voice: z.boolean().optional().describe("Toggle voice narration on/off"),
+      showBubbles: z
+        .boolean()
+        .optional()
+        .describe("Toggle explanation bubbles on/off"),
+      autoplay: z.boolean().optional().describe("Toggle autoplay on/off"),
+      autoplayDelay: z
+        .number()
+        .optional()
+        .describe(
+          "Additive delay in ms on top of reading/TTS time (0 = no extra delay)",
+        ),
+    },
+  },
+  async (args) => {
+    updateConfig({
+      voiceEnabled: args.voice,
+      showBubbles: args.showBubbles,
+      autoplay: args.autoplay,
+      autoplayDelay: args.autoplayDelay,
+    });
 
     return {
       content: [
