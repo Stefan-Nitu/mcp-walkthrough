@@ -32,6 +32,7 @@ export async function listVoices(): Promise<
 
 export function stripMarkdown(text: string): string {
   return text
+    .replace(/\\n/g, "\n")
     .replace(/```[\s\S]*?```/g, "")
     .replace(/`([^`]+)`/g, "$1")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
@@ -41,7 +42,8 @@ export function stripMarkdown(text: string): string {
     .replace(/^[-*+]\s+/gm, "")
     .replace(/^\d+\.\s+/gm, "")
     .replace(/^>\s+/gm, "")
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\n{2,}/g, " ")
+    .replace(/\n/g, " ")
     .trim();
 }
 

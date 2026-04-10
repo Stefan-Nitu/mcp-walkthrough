@@ -3,12 +3,17 @@ import * as vscode from "vscode";
 
 type Result = Record<string, unknown>;
 
+interface OpenOptions {
+  refocusTerminal?: boolean;
+}
+
 export async function openFileAtLine(
   filePath: string,
   line: number,
   endLine?: number,
   startChar?: number,
   endChar?: number,
+  options?: OpenOptions,
 ): Promise<void> {
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (workspaceRoot) {
@@ -28,13 +33,15 @@ export async function openFileAtLine(
   });
 
   vscode.commands.executeCommand("revealInExplorer", uri);
-  setTimeout(() => {
-    if (activeTerminal) {
-      activeTerminal.show(false);
-    } else {
-      vscode.commands.executeCommand("workbench.action.focusPanel");
-    }
-  }, 300);
+  if (options?.refocusTerminal !== false) {
+    setTimeout(() => {
+      if (activeTerminal) {
+        activeTerminal.show(false);
+      } else {
+        vscode.commands.executeCommand("workbench.action.focusPanel");
+      }
+    }, 300);
+  }
 
   const startLine = Math.max(0, line - 1);
   const end = endLine ? Math.max(0, endLine - 1) : startLine;

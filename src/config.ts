@@ -10,12 +10,16 @@ export interface WalkthroughConfig {
   voice: string;
   voiceEnabled: boolean;
   showBubbles: boolean;
+  autoplay: boolean;
+  autoplayDelay: number;
 }
 
 const DEFAULTS: WalkthroughConfig = {
   voice: "en-US-AriaNeural",
   voiceEnabled: true,
   showBubbles: true,
+  autoplay: true,
+  autoplayDelay: 0,
 };
 
 function load(): WalkthroughConfig {
@@ -51,5 +55,8 @@ export function updateConfig(opts: Partial<WalkthroughConfig>): void {
   if (opts.voice !== undefined) config.voice = opts.voice;
   if (opts.voiceEnabled !== undefined) config.voiceEnabled = opts.voiceEnabled;
   if (opts.showBubbles !== undefined) config.showBubbles = opts.showBubbles;
+  if (opts.autoplay !== undefined) config.autoplay = opts.autoplay;
+  if (opts.autoplayDelay !== undefined)
+    config.autoplayDelay = opts.autoplayDelay;
   save(config);
 }

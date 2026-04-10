@@ -26,7 +26,7 @@ describe("stripMarkdown", () => {
 
   test("removes code blocks entirely", () => {
     expect(stripMarkdown("Before\n```js\nconst x = 1;\n```\nAfter")).toBe(
-      "Before\n\nAfter",
+      "Before After",
     );
   });
 
@@ -37,15 +37,15 @@ describe("stripMarkdown", () => {
   });
 
   test("strips header markers", () => {
-    expect(stripMarkdown("## Title\nContent")).toBe("Title\nContent");
+    expect(stripMarkdown("## Title\nContent")).toBe("Title Content");
   });
 
   test("strips list markers", () => {
-    expect(stripMarkdown("- Item 1\n- Item 2")).toBe("Item 1\nItem 2");
+    expect(stripMarkdown("- Item 1\n- Item 2")).toBe("Item 1 Item 2");
   });
 
   test("strips numbered list markers", () => {
-    expect(stripMarkdown("1. First\n2. Second")).toBe("First\nSecond");
+    expect(stripMarkdown("1. First\n2. Second")).toBe("First Second");
   });
 
   test("strips blockquote markers", () => {
@@ -62,12 +62,12 @@ describe("stripMarkdown", () => {
 
     // Assert
     expect(result).toBe(
-      "Overview\n\nThis validates the JWT token.\n\nCheck docs for details",
+      "Overview This validates the JWT token. Check docs for details",
     );
   });
 
   test("collapses excessive newlines", () => {
-    expect(stripMarkdown("A\n\n\n\nB")).toBe("A\n\nB");
+    expect(stripMarkdown("A\n\n\n\nB")).toBe("A B");
   });
 
   test("returns empty string for empty input", () => {
@@ -76,6 +76,39 @@ describe("stripMarkdown", () => {
 
   test("returns plain text unchanged", () => {
     expect(stripMarkdown("Just plain text")).toBe("Just plain text");
+  });
+
+  test("converts literal escaped newlines to spaces for TTS", () => {
+    // Arrange
+    const input = "Line one.\\n\\nLine two.";
+
+    // Act
+    const result = stripMarkdown(input);
+
+    // Assert
+    expect(result).toBe("Line one. Line two.");
+  });
+
+  test("converts double newlines to spaces for TTS", () => {
+    // Arrange
+    const input = "First paragraph.\n\nSecond paragraph.";
+
+    // Act
+    const result = stripMarkdown(input);
+
+    // Assert
+    expect(result).toBe("First paragraph. Second paragraph.");
+  });
+
+  test("converts single newlines to spaces", () => {
+    // Arrange
+    const input = "Line one.\nLine two.";
+
+    // Act
+    const result = stripMarkdown(input);
+
+    // Assert
+    expect(result).toBe("Line one. Line two.");
   });
 });
 

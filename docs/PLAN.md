@@ -10,14 +10,14 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
 
 ## Bugs
 
-- [ ] **TTS reads literal `\n\n` aloud** — `stripMarkdown` doesn't convert escaped newlines to pauses before passing to speech engine
-- [ ] **Walkthrough state dies between MCP tool calls** — starts with `active: true` but next control command finds no walkthrough active
-- [ ] **TTS plays without bridge connection** — narration continues even when VS Code bridge is down, no warning shown
-- [ ] **`explain_code` doesn't highlight lines** — explanation bubble shows but the code range isn't selected/scrolled to
-- [ ] **Auto-advance delay not configurable** — needs a user-facing setting, not just on/off
-- [ ] **Unguarded `JSON.parse` in socket handler** — malformed JSON crashes the extension (`vscode-extension/src/extension.ts:81`)
-- [ ] **Trusted markdown renders LLM command URIs** — `isTrusted = true` without sanitization in walkthrough's own extension (cockpit's handler fixes this, walkthrough's doesn't)
-- [ ] **PowerShell metacharacter injection in TTS** — Windows spawn uses shell string instead of array-based spawn (`src/tts.ts:94`)
+- [x] **TTS reads literal `\n\n` aloud** — fixed, `stripMarkdown` converts escaped newlines and all newlines to spaces
+- [x] **Walkthrough state dies between MCP tool calls** — fixed, narration loop exits when voice is off instead of racing through all steps
+- [x] **TTS plays without bridge connection** — fixed, checks bridge result before starting narration
+- [x] **`explain_code` doesn't highlight lines** — fixed, explanations don't refocus terminal so selection stays visible
+- [x] **Auto-advance delay not configurable** — fixed, `autoplay` and `autoplayDelay` added to persisted config
+- [x] **Unguarded `JSON.parse` in socket handler** — fixed with try/catch + 400 response
+- [x] **Trusted markdown renders LLM command URIs** — fixed, sanitization in `explanations.ts`
+- [x] **PowerShell metacharacter injection in TTS** — fixed, uses EncodedCommand
 - [x] **VS Code engine mismatch** — both now at `^1.100.0`
 
 ## Next
@@ -32,7 +32,7 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
   - `autoplayDelay` — user-configured additive linger time (default 0)
 - Different strategies for reading_time — TBD
 
-### Extract `core.ts`
-- Pull VS Code logic (comments, file nav, walkthrough playback) out of `vscode-extension/src/extension.ts` into a reusable module
-- `extension.ts` becomes thin: imports core, creates socket, wires them together
-- Cockpit imports core via adapter instead of reimplementing
+### ~~Extract modular core~~ (done)
+- Split into `editor.ts`, `explanations.ts`, `walkthrough.ts`
+- `extension.ts` is thin wiring
+- Cockpit imports via adapter with constructor injection

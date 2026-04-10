@@ -36,7 +36,9 @@ export function createExplanations(
     endChar?: number,
   ) {
     clear();
-    await openFileAtLine(filePath, line, endLine, startChar, endChar);
+    await openFileAtLine(filePath, line, endLine, startChar, endChar, {
+      refocusTerminal: false,
+    });
 
     const uri = vscode.Uri.file(filePath);
     const startLine = Math.max(0, line - 1);

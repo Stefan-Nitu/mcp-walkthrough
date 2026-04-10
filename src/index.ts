@@ -149,21 +149,16 @@ async function runNarration(startIndex: number) {
       await navigateWalkthrough("next");
     }
 
-    if (getConfig().voiceEnabled) {
-      const step = activeSteps[i];
-      if (step) {
-        const text = stripMarkdown(step.explanation);
-        await speak(text, getConfig().voice);
-      }
+    if (!getConfig().voiceEnabled) break;
+
+    const step = activeSteps[i];
+    if (step) {
+      const text = stripMarkdown(step.explanation);
+      await speak(text, getConfig().voice);
     }
   }
 
   narrationAbort = null;
-
-  if (!signal.aborted) {
-    await navigateWalkthrough("next");
-    activeSteps = [];
-  }
 }
 
 function stopNarration() {
@@ -199,7 +194,9 @@ server.registerTool(
 
     const result = await startWalkthrough(activeSteps, false);
 
-    runNarration(0).catch((err) => logger.error({ err }, "Narration failed"));
+    if (result.ok !== false) {
+      runNarration(0).catch((err) => logger.error({ err }, "Narration failed"));
+    }
 
     return {
       content: [
@@ -232,10 +229,22 @@ server.registerTool(
         .boolean()
         .optional()
         .describe("Toggle explanation bubbles on/off"),
+      autoplay: z.boolean().optional().describe("Toggle autoplay on/off"),
+      autoplayDelay: z
+        .number()
+        .optional()
+        .describe(
+          "Additive delay in ms on top of reading/TTS time (0 = no extra delay)",
+        ),
     },
   },
   async (args) => {
-    updateConfig({ voiceEnabled: args.voice, showBubbles: args.showBubbles });
+    updateConfig({
+      voiceEnabled: args.voice,
+      showBubbles: args.showBubbles,
+      autoplay: args.autoplay,
+      autoplayDelay: args.autoplayDelay,
+    });
 
     if (args.action === "stop") {
       stopNarration();
