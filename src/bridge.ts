@@ -151,6 +151,22 @@ export async function openFile(
   return socketRequest("/open", { file, line, endLine, startChar, endChar });
 }
 
+export async function showHighlight(
+  file: string,
+  line: number,
+  endLine: number | undefined,
+  explanation: string,
+  title?: string,
+): Promise<BridgeResult> {
+  return socketRequest("/highlight", {
+    file,
+    line,
+    endLine,
+    explanation,
+    title,
+  });
+}
+
 export async function showExplanation(
   file: string,
   line: number,
@@ -159,6 +175,7 @@ export async function showExplanation(
   title?: string,
   startChar?: number,
   endChar?: number,
+  highlights?: { line: number; endLine?: number; narration: string }[],
 ): Promise<BridgeResult> {
   return socketRequest("/explain", {
     file,
@@ -168,11 +185,18 @@ export async function showExplanation(
     title,
     startChar,
     endChar,
+    highlights,
   });
 }
 
 export async function clearExplanations(): Promise<BridgeResult> {
   return socketRequest("/clear");
+}
+
+export interface WalkthroughHighlight {
+  line: number;
+  endLine?: number;
+  narration: string;
 }
 
 export interface WalkthroughStep {
@@ -181,6 +205,7 @@ export interface WalkthroughStep {
   endLine?: number;
   explanation: string;
   title?: string;
+  highlights?: WalkthroughHighlight[];
 }
 
 export async function startWalkthrough(

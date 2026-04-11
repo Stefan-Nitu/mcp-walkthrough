@@ -19,13 +19,7 @@ import {
   type WalkthroughStep,
 } from "./bridge.js";
 import { getConfig, updateConfig } from "./config.js";
-import {
-  cleanupTts,
-  listVoices,
-  speak,
-  stopSpeaking,
-  stripMarkdown,
-} from "./tts.js";
+import { cleanupTts, listVoices, speak, stopSpeaking } from "./tts.js";
 import { flushLogs, logger } from "./utils/logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -83,6 +77,18 @@ server.registerTool(
       title: z.string().optional().describe("Title for the explanation"),
       startChar: z.number().optional().describe("Start character (0-based)"),
       endChar: z.number().optional().describe("End character (0-based)"),
+      highlights: z
+        .array(
+          z.object({
+            line: z.number().describe("Start line (1-based)"),
+            endLine: z.number().optional().describe("End line (1-based)"),
+            narration: z.string().describe("Spoken text for this highlight."),
+          }),
+        )
+        .optional()
+        .describe(
+          "Sub-range highlights. Selection and bubble move through each as TTS narrates.",
+        ),
     },
   },
   async (args) => {
@@ -94,12 +100,8 @@ server.registerTool(
       args.title,
       args.startChar,
       args.endChar,
+      args.highlights,
     );
-    if (result.ok !== false && getConfig().voiceEnabled) {
-      speak(stripMarkdown(args.explanation), getConfig().voice).catch((err) =>
-        logger.warn({ err }, "TTS failed for explain_code"),
-      );
-    }
     return {
       content: [{ type: "text", text: JSON.stringify(result) }],
     };
@@ -126,57 +128,26 @@ const stepSchema = z.object({
   explanation: z
     .string()
     .describe(
-      "Markdown explanation. Write as natural spoken language — this gets narrated by TTS. Use real newlines, NOT literal backslash-n.",
+      "Step intro — sets the context. Narrated first, shown in the bubble. Subsequent highlights append to it like a teleprompter. Use real newlines, NOT literal backslash-n.",
     ),
   title: z.string().optional().describe("Step title"),
+  highlights: z
+    .array(
+      z.object({
+        line: z.number().describe("Start line (1-based)"),
+        endLine: z.number().optional().describe("End line (1-based)"),
+        narration: z
+          .string()
+          .describe(
+            "Spoken text for this highlight. Appended to the bubble as a live transcript. Natural language.",
+          ),
+      }),
+    )
+    .optional()
+    .describe(
+      "Sub-range highlights within the step. Selection moves through code as TTS narrates each one. Text builds up in the bubble like a teleprompter. Omit for simple single-highlight steps.",
+    ),
 });
-
-// --- Walkthrough state ---
-
-let activeSteps: WalkthroughStep[] = [];
-let narrationAbort: AbortController | null = null;
-let paused = false;
-let pauseResolve: (() => void) | null = null;
-
-async function runNarration(startIndex: number) {
-  narrationAbort = new AbortController();
-  const signal = narrationAbort.signal;
-
-  for (let i = startIndex; i < activeSteps.length; i++) {
-    if (signal.aborted) break;
-
-    while (paused && !signal.aborted) {
-      await new Promise<void>((r) => {
-        pauseResolve = r;
-      });
-      pauseResolve = null;
-    }
-    if (signal.aborted) break;
-
-    if (i > startIndex) {
-      if (!getConfig().autoplay) break;
-      await navigateWalkthrough("next");
-    }
-
-    if (!getConfig().voiceEnabled) break;
-
-    const step = activeSteps[i];
-    if (step) {
-      const text = stripMarkdown(step.explanation);
-      await speak(text, getConfig().voice);
-    }
-  }
-
-  narrationAbort = null;
-}
-
-function stopNarration() {
-  paused = false;
-  pauseResolve?.();
-  stopSpeaking();
-  narrationAbort?.abort();
-  narrationAbort = null;
-}
 
 server.registerTool(
   "walkthrough",
@@ -200,71 +171,14 @@ server.registerTool(
   },
   async (args) => {
     if (args.steps) {
-      stopNarration();
-      activeSteps = args.steps as WalkthroughStep[];
-      paused = false;
-
-      const result = await startWalkthrough(activeSteps, false);
-
-      if (result.ok !== false) {
-        runNarration(0).catch((err) =>
-          logger.error({ err }, "Narration failed"),
-        );
-      }
-
+      const result = await startWalkthrough(args.steps as WalkthroughStep[]);
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
       };
     }
 
-    if (args.action === "stop") {
-      stopNarration();
-      activeSteps = [];
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ ok: true, stopped: true }) },
-        ],
-      };
-    }
-
-    if (args.action === "pause") {
-      paused = true;
-      stopSpeaking();
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ ok: true, paused: true }) },
-        ],
-      };
-    }
-
-    if (args.action === "resume") {
-      paused = false;
-      pauseResolve?.();
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ ok: true, resumed: true }) },
-        ],
-      };
-    }
-
-    if (
-      args.action === "next" ||
-      args.action === "prev" ||
-      args.action === "goto"
-    ) {
-      stopNarration();
+    if (args.action) {
       const result = await navigateWalkthrough(args.action, args.step);
-
-      if (
-        result.active &&
-        getConfig().voiceEnabled &&
-        typeof result.currentStep === "number"
-      ) {
-        runNarration(result.currentStep).catch((err) =>
-          logger.error({ err }, "Narration failed"),
-        );
-      }
-
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
       };
@@ -471,7 +385,7 @@ async function main() {
     if (cleanupStarted) return;
     cleanupStarted = true;
 
-    stopNarration();
+    stopSpeaking();
     cleanupTts();
     logger.info("Shutting down...");
     flushLogs();

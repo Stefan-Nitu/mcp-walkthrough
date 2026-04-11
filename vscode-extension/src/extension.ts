@@ -3,8 +3,10 @@ import { existsSync, unlinkSync } from "node:fs";
 import * as http from "node:http";
 import * as net from "node:net";
 import * as vscode from "vscode";
+import { getConfig, updateConfig } from "./config";
 import { getSelection, openFileAtLine } from "./editor";
 import { createExplanations } from "./explanations";
+import { cleanupTts, speak, stripMarkdown } from "./tts";
 import type { WalkthroughStep } from "./walkthrough";
 import { createWalkthrough } from "./walkthrough";
 
@@ -22,10 +24,11 @@ function socketPathForDir(dir: string): string {
 
 let server: http.Server | undefined;
 let socketPath: string | undefined;
+let walkthroughInstance: ReturnType<typeof createWalkthrough> | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   const explanations = createExplanations(context);
-  const walkthrough = createWalkthrough(context, explanations);
+  const walkthrough = createWalkthrough(context, explanations, getConfig);
   walkthroughInstance = walkthrough;
 
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -54,7 +57,7 @@ export function activate(context: vscode.ExtensionContext) {
         );
         return { ok: true };
 
-      case "/explain":
+      case "/explain": {
         await explanations.show(
           data.file as string,
           data.line as number,
@@ -64,6 +67,41 @@ export function activate(context: vscode.ExtensionContext) {
           data.startChar as number | undefined,
           data.endChar as number | undefined,
         );
+        const highlights = data.highlights as
+          | { line: number; endLine?: number; narration: string }[]
+          | undefined;
+        if (getConfig().voiceEnabled) {
+          if (highlights && highlights.length > 0) {
+            (async () => {
+              for (const hl of highlights) {
+                await explanations.highlight(
+                  data.file as string,
+                  hl.line,
+                  hl.endLine,
+                  hl.narration,
+                  data.title as string | undefined,
+                );
+                await speak(stripMarkdown(hl.narration), getConfig().voice);
+              }
+            })().catch(() => {});
+          } else {
+            speak(
+              stripMarkdown(data.explanation as string),
+              getConfig().voice,
+            ).catch(() => {});
+          }
+        }
+        return { ok: true };
+      }
+
+      case "/highlight":
+        await explanations.highlight(
+          data.file as string,
+          data.line as number,
+          data.endLine as number | undefined,
+          data.explanation as string,
+          data.title as string | undefined,
+        );
         return { ok: true };
 
       case "/clear":
@@ -71,11 +109,7 @@ export function activate(context: vscode.ExtensionContext) {
         return { ok: true };
 
       case "/walkthrough":
-        return walkthrough.start(
-          data.steps as WalkthroughStep[],
-          data.autoplay as boolean | undefined,
-          data.delayMs as number | undefined,
-        );
+        return walkthrough.start(data.steps as WalkthroughStep[]);
 
       case "/walkthrough/navigate":
         return walkthrough.navigate(data.action as string, data.step as number);
@@ -85,6 +119,10 @@ export function activate(context: vscode.ExtensionContext) {
 
       case "/selection":
         return getSelection();
+
+      case "/settings":
+        updateConfig(data as Partial<typeof data>);
+        return { ok: true, ...getConfig() };
 
       case "/ping":
         return { ok: true };
@@ -145,13 +183,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   walkthroughInstance?.stop();
+  cleanupTts();
   server?.close();
   if (socketPath && existsSync(socketPath)) {
     unlinkSync(socketPath);
   }
 }
-
-let walkthroughInstance: ReturnType<typeof createWalkthrough> | undefined;
 
 function cleanupStaleSocket(path: string): void {
   if (!existsSync(path)) return;
@@ -163,9 +200,7 @@ function cleanupStaleSocket(path: string): void {
   client.on("error", () => {
     try {
       unlinkSync(path);
-    } catch {
-      // ignore
-    }
+    } catch {}
   });
 }
 

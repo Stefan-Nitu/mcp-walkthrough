@@ -32,10 +32,30 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
   - `autoplayDelay` — user-configured additive linger time (default 0)
 - Different strategies for reading_time — TBD
 
-### Sub-range highlighting during narration
-- Each walkthrough step highlights specific line ranges within the code as TTS narrates
-- Explanation carries sub-ranges that map to sections of the narration
-- VS Code extension updates the selection as narration progresses (karaoke effect for code)
+### ~~Sub-range highlighting during narration~~ (done)
+- Teleprompter bubble: text builds up as TTS narrates each highlight, current section bold
+- Selection moves through code sub-ranges in sync with narration
+
+### ~~Move TTS into VS Code extension~~ (done)
+- TTS lives in extension, keybindings trigger narration, MCP server is thin passthrough
+
+### Step restart
+- `Cmd+Shift+↑` restarts current step from the beginning (re-narrate explanation + highlights)
+- Useful when you missed something or want to re-listen
+
+### Walkthrough skill for Claude Code
+- A skill that constructs walkthroughs with correct line numbers
+- Reads the target files, understands the code structure
+- Spawns a subagent to plan steps + highlights with verified line ranges
+- Main agent just triggers the skill, e.g. `/walkthrough src/tts.ts`
+- Eliminates line number guessing — the skill reads the file first
+
+### Walkthrough export/import
+- Save walkthroughs to JSON files so they can be replayed later
+- Export: save current walkthrough steps + highlights to `.walkthrough.json`
+- Import: load a `.walkthrough.json` and start the walkthrough
+- Enables sharing walkthroughs between team members
+- Agent can generate a walkthrough once, user replays it anytime
 
 ### ~~Extract modular core~~ (done)
 - Split into `editor.ts`, `explanations.ts`, `walkthrough.ts`

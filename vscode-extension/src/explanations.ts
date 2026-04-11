@@ -1,6 +1,12 @@
 import * as vscode from "vscode";
 import { openFileAtLine } from "./editor";
 
+function sanitize(text: string): string {
+  return text
+    .replace(/\\n/g, "\n")
+    .replace(/\[([^\]]*)\]\(command:[^)]*\)/g, "$1");
+}
+
 export interface Explanations {
   show(
     file: string,
@@ -11,6 +17,12 @@ export interface Explanations {
     startChar?: number,
     endChar?: number,
   ): Promise<void>;
+  highlight(
+    file: string,
+    line: number,
+    endLine: number | undefined,
+  ): Promise<void>;
+  updateBubble(text: string): void;
   clear(): void;
   dispose(): void;
 }
@@ -24,7 +36,8 @@ export function createExplanations(
   );
   context.subscriptions.push(commentController);
 
-  const activeThreads: vscode.CommentThread[] = [];
+  let activeThread: vscode.CommentThread | null = null;
+  let activeComment: vscode.Comment | null = null;
 
   async function show(
     filePath: string,
@@ -43,35 +56,60 @@ export function createExplanations(
     const end = endLine ? Math.max(0, endLine - 1) : startLine;
     const range = new vscode.Range(startLine, 0, end, 0);
 
-    const sanitized = explanation
-      .replace(/\\n/g, "\n")
-      .replace(/\[([^\]]*)\]\(command:[^)]*\)/g, "$1");
-    const body = new vscode.MarkdownString(sanitized, true);
+    const body = new vscode.MarkdownString(sanitize(explanation), true);
     body.isTrusted = true;
     body.supportThemeIcons = true;
 
-    const comment: vscode.Comment = {
+    activeComment = {
       body,
       mode: vscode.CommentMode.Preview,
-      author: { name: "Walkthrough" },
+      author: { name: title || "Walkthrough" },
     };
 
-    const thread = commentController.createCommentThread(uri, range, [comment]);
-    thread.canReply = false;
-    thread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
-    if (title) {
-      thread.label = title;
-    }
+    activeThread = commentController.createCommentThread(uri, range, [
+      activeComment,
+    ]);
+    activeThread.canReply = false;
+    activeThread.collapsibleState =
+      vscode.CommentThreadCollapsibleState.Expanded;
+  }
 
-    activeThreads.push(thread);
+  async function highlight(
+    filePath: string,
+    line: number,
+    endLine: number | undefined,
+  ) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.uri.fsPath !== filePath) {
+      await openFileAtLine(filePath, line, endLine);
+    } else {
+      const startLine = Math.max(0, line - 1);
+      const end = endLine ? Math.max(0, endLine - 1) : startLine;
+      const range = new vscode.Range(startLine, 0, end, 0);
+      editor.selection = new vscode.Selection(range.start, range.end);
+      editor.revealRange(
+        range,
+        vscode.TextEditorRevealType.InCenterIfOutsideViewport,
+      );
+    }
+  }
+
+  function updateBubble(text: string) {
+    if (!activeComment || !activeThread) return;
+    const body = new vscode.MarkdownString(sanitize(text), true);
+    body.isTrusted = true;
+    body.supportThemeIcons = true;
+    activeComment.body = body;
+    activeThread.comments = [...activeThread.comments];
   }
 
   function clear() {
-    for (const thread of activeThreads) {
-      thread.dispose();
+    if (activeThread) {
+      activeThread.dispose();
+      activeThread = null;
+      activeComment = null;
     }
-    activeThreads.length = 0;
   }
 
-  return { show, clear, dispose: clear };
+  return { show, highlight, updateBubble, clear, dispose: clear };
 }

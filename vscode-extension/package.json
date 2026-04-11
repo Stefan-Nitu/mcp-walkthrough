@@ -47,13 +47,17 @@
     ]
   },
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "node esbuild.js",
     "package": "vsce package"
+  },
+  "dependencies": {
+    "msedge-tts": "^2.0.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.100.0",
     "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.20.0",
     "typescript": "^5.7.0"
   }
 }

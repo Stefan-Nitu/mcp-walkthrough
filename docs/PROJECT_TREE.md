@@ -2,7 +2,7 @@
 
 > **Auto-generated** - Run `scripts/generate-project-tree.sh` to update
 
-Last updated: 2026-04-11 02:21:31
+Last updated: 2026-04-11 03:27:10
 
 ## Directory Structure
 
@@ -37,22 +37,31 @@ Last updated: 2026-04-11 02:21:31
 |   |-- code-cli.test.ts
 |   |-- postinstall.test.ts
 |   |-- socket.test.ts
+|   |-- teleprompter.test.ts
 |   `-- tts.test.ts
 |-- vscode-extension
 |   |-- out
+|   |   |-- config.js
+|   |   |-- config.js.map
 |   |   |-- editor.js
 |   |   |-- editor.js.map
 |   |   |-- explanations.js
 |   |   |-- explanations.js.map
 |   |   |-- extension.js
 |   |   |-- extension.js.map
+|   |   |-- tts.js
+|   |   |-- tts.js.map
 |   |   |-- walkthrough.js
 |   |   `-- walkthrough.js.map
 |   |-- src
+|   |   |-- config.ts
 |   |   |-- editor.ts
 |   |   |-- explanations.ts
 |   |   |-- extension.ts
+|   |   |-- teleprompter.ts
+|   |   |-- tts.ts
 |   |   `-- walkthrough.ts
+|   |-- esbuild.js
 |   |-- package-lock.json
 |   |-- package.json
 |   |-- tsconfig.json
@@ -65,11 +74,11 @@ Last updated: 2026-04-11 02:21:31
 |-- tsconfig.build.json
 `-- tsconfig.json
 
-10 directories, 47 files
+10 directories, 56 files
 ```
 
 ## Statistics
 
 - **Source files**: 7 TypeScript files
-- **Test files**: 5 TypeScript files
+- **Test files**: 6 TypeScript files
 
