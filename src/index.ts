@@ -237,7 +237,7 @@ server.registerTool(
       voice: z
         .string()
         .optional()
-        .describe("Voice name (e.g. en-US-GuyNeural, en-US-AriaNeural)"),
+        .describe("Voice name (e.g. en-US-GuyNeural, en-US-MichelleNeural)"),
       list: z
         .boolean()
         .optional()

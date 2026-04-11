@@ -14,7 +14,7 @@ export interface WalkthroughConfig {
 }
 
 const DEFAULTS: WalkthroughConfig = {
-  voice: "en-US-AriaNeural",
+  voice: "en-US-MichelleNeural",
   voiceEnabled: true,
   showBubbles: true,
   autoplay: true,
