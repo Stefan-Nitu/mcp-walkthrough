@@ -2,7 +2,8 @@ node_modules
 dist
 *.log
 .DS_Store
-.claude
+.claude/*
+!.claude/skills/
 vscode-extension/out
 vscode-extension/node_modules
 vscode-extension/*.vsix
