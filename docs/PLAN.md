@@ -6,7 +6,7 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
 
 ## Current Status
 
-**v0.2.5** — MCP server with TTS, VS Code bridge extension, published on npm.
+**v0.3.1** — Coordinator/shell architecture. Pure state machine yields `WalkthroughState` via `AsyncIterable`. Shell subscribes and renders. Selection clears after narration. Navigation works correctly with single-step narration and shell-driven autoplay.
 
 ## Bugs
 
@@ -67,3 +67,24 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
 - Split into `editor.ts`, `explanations.ts`, `walkthrough.ts`
 - `extension.ts` is thin wiring
 - Cockpit imports via adapter with constructor injection
+
+### Extract use cases from coordinator (Phase 2)
+The coordinator (`walkthrough-coordinator.ts`) is a working blob. Seams to extract:
+- **narrateStep** — the show → highlight → idle flow. Currently inline in `runNarration`. Pure, no vscode deps. Yields `WalkthroughState` frames.
+- **validateSteps** — highlight range validation. Already a separate function, could move to its own module.
+- **stripMarkdown** — TTS text prep. Already exported, used by both coordinator and MCP server's `tts.ts`.
+- **buildTeleprompterText / buildFinalText** — bubble text formatting. Pure functions, duplicated from old `teleprompter.ts`.
+- **channel** — async push/consume channel. Generic utility, could be reused.
+
+Per architecture principles: extract when a second consumer appears. Currently each has one consumer. Monitor for duplication.
+
+### Add shell autoplay + navigation tests
+Autoplay (shell calls `navigate("next")` on idle) and manual navigation suppression (`manualNav` flag) are untested. The logic lives in the shell which has vscode deps. Options:
+- Extract autoplay decision into coordinator (testable)
+- Create a shell adapter that's testable without vscode
+- Integration test via MCP inspector
+
+### Debug logging cleanup
+- Currently using `log.info` for all logs because VS Code `LogOutputChannel` debug level filtering doesn't work as expected
+- Should be `log.debug` for state transitions, `log.info` for start/stop/navigate
+- Investigate VS Code log level configuration
