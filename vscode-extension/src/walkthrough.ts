@@ -3,6 +3,7 @@ import type { Explanations } from "./explanations";
 import { speak, stopSpeaking } from "./tts";
 import {
   createWalkthroughCoordinator,
+  type NavigateAction,
   type WalkthroughConfig,
   type WalkthroughState,
   type WalkthroughStep,
@@ -14,7 +15,7 @@ type Result = Record<string, unknown>;
 
 export interface Walkthrough {
   start(steps: WalkthroughStep[]): Result;
-  navigate(action: string, step?: number): Result;
+  navigate(action: NavigateAction, step?: number): Result;
   status(): Result;
   stop(): void;
 }
@@ -31,7 +32,10 @@ export function createWalkthrough(
   );
   context.subscriptions.push(statusBarItem);
 
-  const coordinator = createWalkthroughCoordinator(getConfig);
+  const coordinator = createWalkthroughCoordinator(getConfig, (msg) =>
+    log.info(`[coord] ${msg}`),
+  );
+  let manualNav = false;
 
   context.subscriptions.push(
     vscode.commands.registerCommand("walkthrough.next", () => navigate("next")),
@@ -90,6 +94,14 @@ export function createWalkthrough(
           explanations.updateBubble(state.bubble.text);
         }
         explanations.clearSelection();
+        if (
+          !manualNav &&
+          getConfig().autoplay &&
+          state.stepIndex < state.totalSteps - 1
+        ) {
+          coordinator.navigate("next");
+        }
+        manualNav = false;
         break;
     }
 
@@ -116,8 +128,9 @@ export function createWalkthrough(
     return { active: true, currentStep: 0, totalSteps: steps.length };
   }
 
-  function navigate(action: string, step?: number): Result {
+  function navigate(action: NavigateAction, step?: number): Result {
     log.info(`navigate: ${action} step=${step}`);
+    manualNav = action === "next" || action === "prev" || action === "goto";
     stopSpeaking();
     coordinator.navigate(action, step);
     if (action === "stop") return { ok: true, stopped: true };

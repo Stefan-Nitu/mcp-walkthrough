@@ -163,29 +163,6 @@ describe("WalkthroughCoordinator", () => {
       expect(states[2]?.speak).toBeNull();
     });
 
-    test("autoplay advances through all steps", async () => {
-      // Arrange
-      const sut = createWalkthroughCoordinator(makeConfig({ autoplay: true }));
-      const step1 = makeStep({
-        title: "Step One",
-        highlights: [{ line: 5, narration: "First highlight" }],
-      });
-      const step2 = makeStep({
-        title: "Step Two",
-        highlights: [{ line: 10, narration: "Second highlight" }],
-      });
-
-      // Act — each step: show + highlight + idle = 3 states x 2 steps = 6
-      sut.start([step1, step2]);
-      const states = await collectStates(sut, 6);
-
-      // Assert — both steps should play
-      const showStates = states.filter((s) => s.phase === "show");
-      expect(showStates).toHaveLength(2);
-      expect(showStates[0]?.stepIndex).toBe(0);
-      expect(showStates[1]?.stepIndex).toBe(1);
-    });
-
     test("skips speaking when voice disabled", async () => {
       // Arrange
       const sut = createWalkthroughCoordinator(

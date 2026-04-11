@@ -66,10 +66,18 @@ export function stripMarkdown(text: string): string {
     .trim();
 }
 
+export type NavigateAction =
+  | "next"
+  | "prev"
+  | "stop"
+  | "pause"
+  | "resume"
+  | "goto";
+
 export interface WalkthroughCoordinator
   extends AsyncIterable<WalkthroughState> {
   start(steps: WalkthroughStep[]): void;
-  navigate(action: string, step?: number): void;
+  navigate(action: NavigateAction, step?: number): void;
   stop(): void;
 }
 
@@ -125,6 +133,7 @@ function createChannel<T>() {
 
 export function createWalkthroughCoordinator(
   getConfig: () => WalkthroughConfig,
+  log: (msg: string) => void = () => {},
 ): WalkthroughCoordinator {
   let steps: WalkthroughStep[] = [];
   let currentStepIndex = -1;
@@ -144,106 +153,98 @@ export function createWalkthroughCoordinator(
     };
   }
 
-  function statusLabel(): string {
-    const step = steps[currentStepIndex];
+  function emit(
+    phase: NarrationPhase,
+    stepIdx: number,
+    partial: Partial<WalkthroughState>,
+  ) {
+    const step = steps[stepIdx];
     const title = step?.title || "";
-    return `$(book) ${currentStepIndex + 1}/${steps.length} ${title}`;
-  }
-
-  function stepTitle(): string {
-    const step = steps[currentStepIndex];
-    if (!step) return "";
-    const label = `${currentStepIndex + 1}/${steps.length}`;
-    return step.title ? `${label}: ${step.title}` : `Step ${label}`;
-  }
-
-  function emit(phase: NarrationPhase, partial: Partial<WalkthroughState>) {
     channel.push({
       phase,
-      stepIndex: currentStepIndex,
+      stepIndex: stepIdx,
       totalSteps: steps.length,
       file: null,
       selection: null,
       bubble: null,
       speak: null,
-      statusLabel: steps.length > 0 ? statusLabel() : null,
+      statusLabel: `$(book) ${stepIdx + 1}/${steps.length} ${title}`,
       ...partial,
     });
   }
 
-  async function runNarration(startIndex: number) {
+  async function runNarration() {
+    log(`runNarration step=${currentStepIndex}`);
     abortController = new AbortController();
     const signal = abortController.signal;
 
-    for (let i = startIndex; i < steps.length; i++) {
-      if (signal.aborted) break;
+    const i = currentStepIndex;
+    const step = steps[i];
+    if (!step || signal.aborted) {
+      abortController = null;
+      return;
+    }
 
-      if (i > startIndex) {
-        if (!getConfig().autoplay) break;
-        currentStepIndex = i;
+    const hasHighlights = step.highlights && step.highlights.length > 0;
+    const stepLabel = `${i + 1}/${steps.length}`;
+    const title = step.title
+      ? `${stepLabel}: ${step.title}`
+      : `Step ${stepLabel}`;
+    log(`runNarration step=${i} title="${step.title ?? ""}"`);
+
+    emit("show", i, {
+      file: step.file,
+      selection: { line: step.line, endLine: step.endLine },
+      bubble: {
+        text: hasHighlights ? step.explanation : step.explanation + CONTROLS,
+        title,
+      },
+      speak: getConfig().voiceEnabled ? stripMarkdown(step.explanation) : null,
+    });
+
+    await new Promise((r) => setTimeout(r, 0));
+    if (signal.aborted || !getConfig().voiceEnabled) {
+      abortController = null;
+      return;
+    }
+
+    if (step.highlights && step.highlights.length > 0) {
+      const parts: string[] = [step.explanation];
+
+      for (let h = 0; h < step.highlights.length; h++) {
+        if (signal.aborted) break;
+        const hl = step.highlights[h];
+        if (!hl) continue;
+
+        parts.push(hl.narration);
+
+        emit("highlight", i, {
+          file: step.file,
+          selection: { line: hl.line, endLine: hl.endLine },
+          bubble: {
+            text: buildTeleprompterText(parts, parts.length - 1),
+            title,
+          },
+          speak: stripMarkdown(hl.narration),
+        });
+
+        await new Promise((r) => setTimeout(r, 0));
+        if (signal.aborted) break;
       }
 
-      const step = steps[i];
-      if (!step) continue;
-
-      const hasHighlights = step.highlights && step.highlights.length > 0;
-      const title = stepTitle();
-
-      // Show step, speak explanation
-      emit("show", {
-        file: step.file,
-        selection: { line: step.line, endLine: step.endLine },
-        bubble: {
-          text: hasHighlights ? step.explanation : step.explanation + CONTROLS,
-          title,
-        },
-        speak: getConfig().voiceEnabled
-          ? stripMarkdown(step.explanation)
-          : null,
-      });
-
-      // Wait for shell to process (speak, render) before continuing
-      await new Promise((r) => setTimeout(r, 0));
-      if (signal.aborted || !getConfig().voiceEnabled) break;
-
-      if (step.highlights && step.highlights.length > 0) {
-        const parts: string[] = [step.explanation];
-
-        for (let h = 0; h < step.highlights.length; h++) {
-          if (signal.aborted) break;
-          const hl = step.highlights[h];
-          if (!hl) continue;
-
-          parts.push(hl.narration);
-
-          emit("highlight", {
-            file: step.file,
-            selection: { line: hl.line, endLine: hl.endLine },
-            bubble: {
-              text: buildTeleprompterText(parts, parts.length - 1),
-              title,
-            },
-            speak: stripMarkdown(hl.narration),
-          });
-
-          await new Promise((r) => setTimeout(r, 0));
-          if (signal.aborted) break;
-        }
-
-        if (!signal.aborted) {
-          emit("idle", {
-            file: step.file,
-            selection: null,
-            bubble: { text: buildFinalText(parts, CONTROLS), title },
-          });
-        }
-      } else if (!signal.aborted) {
-        emit("idle", {
+      if (!signal.aborted) {
+        emit("idle", i, {
           file: step.file,
           selection: null,
-          bubble: { text: step.explanation + CONTROLS, title },
+          bubble: { text: buildFinalText(parts, CONTROLS), title },
         });
       }
+    } else if (!signal.aborted) {
+      emit("idle", i, {
+        file: step.file,
+        selection: null,
+        bubble: { text: step.explanation + CONTROLS, title },
+      });
     }
 
     abortController = null;
@@ -274,11 +275,13 @@ export function createWalkthroughCoordinator(
     cancelNarration();
     steps = newSteps;
     currentStepIndex = 0;
-    runNarration(0);
+    runNarration();
   }
 
-  function navigate(action: string, step?: number) {
+  function navigate(action: NavigateAction, step?: number) {
     if (steps.length === 0) return;
+
+    log(`navigate: ${action} currentStep=${currentStepIndex}`);
 
     switch (action) {
       case "stop":
@@ -289,12 +292,13 @@ export function createWalkthroughCoordinator(
         return;
       case "resume":
         cancelNarration();
-        runNarration(currentStepIndex);
+        runNarration();
         return;
       case "next":
         if (currentStepIndex < steps.length - 1) {
           cancelNarration();
           currentStepIndex++;
+          log(`next: now at step=${currentStepIndex}`);
         } else {
           stop();
           return;
@@ -304,7 +308,9 @@ export function createWalkthroughCoordinator(
         if (currentStepIndex > 0) {
           cancelNarration();
           currentStepIndex--;
+          log(`prev: now at step=${currentStepIndex}`);
         } else {
+          log(`prev: already at 0, no-op`);
           return;
         }
         break;
@@ -320,7 +326,7 @@ export function createWalkthroughCoordinator(
         return;
     }
 
-    runNarration(currentStepIndex);
+    runNarration();
   }
 
   function stop() {
