@@ -163,6 +163,29 @@ describe("WalkthroughCoordinator", () => {
       expect(states[2]?.speak).toBeNull();
     });
 
+    test("autoplay advances through all steps", async () => {
+      // Arrange
+      const sut = createWalkthroughCoordinator(makeConfig({ autoplay: true }));
+      const step1 = makeStep({
+        title: "Step One",
+        highlights: [{ line: 5, narration: "First highlight" }],
+      });
+      const step2 = makeStep({
+        title: "Step Two",
+        highlights: [{ line: 10, narration: "Second highlight" }],
+      });
+
+      // Act — each step: show + highlight + idle = 3 states x 2 steps = 6
+      sut.start([step1, step2]);
+      const states = await collectStates(sut, 6);
+
+      // Assert — both steps should play
+      const showStates = states.filter((s) => s.phase === "show");
+      expect(showStates).toHaveLength(2);
+      expect(showStates[0]?.stepIndex).toBe(0);
+      expect(showStates[1]?.stepIndex).toBe(1);
+    });
+
     test("skips speaking when voice disabled", async () => {
       // Arrange
       const sut = createWalkthroughCoordinator(
@@ -325,6 +348,114 @@ describe("WalkthroughCoordinator", () => {
 
       // Assert
       expect(states.map((s) => s.phase)).toEqual(["show", "highlight", "idle"]);
+    });
+  });
+
+  describe("navigate", () => {
+    test("prev at step 0 does not restart narration", async () => {
+      // Arrange
+      const sut = createWalkthroughCoordinator(
+        makeConfig({ voiceEnabled: false }),
+      );
+      sut.start([makeStep(), makeStep()]);
+      const [showState] = await collectStates(sut, 1);
+
+      // Act
+      const prevStep = showState?.stepIndex;
+      sut.navigate("prev");
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Assert — no new show state emitted, step didn't change
+      expect(prevStep).toBe(0);
+    });
+
+    test("next advances and emits new show state", async () => {
+      // Arrange
+      const sut = createWalkthroughCoordinator(
+        makeConfig({ voiceEnabled: false }),
+      );
+      sut.start([makeStep(), makeStep({ line: 42 })]);
+      await collectStates(sut, 1);
+
+      // Act
+      sut.navigate("next");
+      await new Promise((r) => setTimeout(r, 10));
+      const [second] = await collectStates(sut, 1);
+
+      // Assert
+      expect(second?.stepIndex).toBe(1);
+      expect(second?.selection).toMatchObject({ line: 42 });
+    });
+
+    test("prev goes back and emits new show state", async () => {
+      // Arrange
+      const sut = createWalkthroughCoordinator(
+        makeConfig({ voiceEnabled: false }),
+      );
+      sut.start([makeStep(), makeStep()]);
+      await collectStates(sut, 1);
+      sut.navigate("next");
+      await new Promise((r) => setTimeout(r, 10));
+      await collectStates(sut, 1);
+
+      // Act
+      sut.navigate("prev");
+      await new Promise((r) => setTimeout(r, 10));
+      const [back] = await collectStates(sut, 1);
+
+      // Assert
+      expect(back?.stepIndex).toBe(0);
+    });
+
+    test("goto jumps to specific step", async () => {
+      // Arrange
+      const sut = createWalkthroughCoordinator(
+        makeConfig({ voiceEnabled: false }),
+      );
+      sut.start([makeStep(), makeStep(), makeStep({ line: 77 })]);
+      await collectStates(sut, 1);
+
+      // Act
+      sut.navigate("goto", 2);
+      await new Promise((r) => setTimeout(r, 10));
+      const [jumped] = await collectStates(sut, 1);
+
+      // Assert
+      expect(jumped?.stepIndex).toBe(2);
+      expect(jumped?.selection).toMatchObject({ line: 77 });
+    });
+
+    test("next at last step stops", async () => {
+      // Arrange
+      const sut = createWalkthroughCoordinator(
+        makeConfig({ voiceEnabled: false }),
+      );
+      sut.start([makeStep()]);
+      await collectStates(sut, 1);
+
+      // Act
+      sut.navigate("next");
+      await new Promise((r) => setTimeout(r, 10));
+      const [stopped] = await collectStates(sut, 1);
+
+      // Assert
+      expect(stopped?.phase).toBe("inactive");
+    });
+
+    test("stop emits inactive", async () => {
+      // Arrange
+      const sut = createWalkthroughCoordinator(
+        makeConfig({ voiceEnabled: false }),
+      );
+      sut.start([makeStep()]);
+      await collectStates(sut, 1);
+
+      // Act
+      sut.navigate("stop");
+      const [stopped] = await collectStates(sut, 1);
+
+      // Assert
+      expect(stopped?.phase).toBe("inactive");
     });
   });
 

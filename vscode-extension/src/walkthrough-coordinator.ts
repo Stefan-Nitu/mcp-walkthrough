@@ -113,7 +113,6 @@ function createChannel<T>() {
       });
     },
     return(): Promise<IteratorResult<T>> {
-      close();
       return Promise.resolve({ value: undefined as T, done: true });
     },
     [Symbol.asyncIterator]() {
@@ -281,19 +280,20 @@ export function createWalkthroughCoordinator(
   function navigate(action: string, step?: number) {
     if (steps.length === 0) return;
 
-    cancelNarration();
-
     switch (action) {
       case "stop":
         stop();
         return;
       case "pause":
+        cancelNarration();
         return;
       case "resume":
+        cancelNarration();
         runNarration(currentStepIndex);
         return;
       case "next":
         if (currentStepIndex < steps.length - 1) {
+          cancelNarration();
           currentStepIndex++;
         } else {
           stop();
@@ -301,12 +301,23 @@ export function createWalkthroughCoordinator(
         }
         break;
       case "prev":
-        if (currentStepIndex > 0) currentStepIndex--;
+        if (currentStepIndex > 0) {
+          cancelNarration();
+          currentStepIndex--;
+        } else {
+          return;
+        }
         break;
       case "goto":
-        if (step !== undefined && step >= 0 && step < steps.length)
+        if (step !== undefined && step >= 0 && step < steps.length) {
+          cancelNarration();
           currentStepIndex = step;
+        } else {
+          return;
+        }
         break;
+      default:
+        return;
     }
 
     runNarration(currentStepIndex);

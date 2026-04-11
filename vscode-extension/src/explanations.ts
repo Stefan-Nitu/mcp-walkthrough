@@ -87,20 +87,14 @@ export function createExplanations(
     line: number,
     endLine: number | undefined,
   ) {
-    const editor =
-      activeEditor?.document.uri.fsPath === filePath ? activeEditor : null;
-    if (!editor) {
-      activeEditor = await openFileAtLine(filePath, line, endLine);
-    } else {
-      const startLine = Math.max(0, line - 1);
-      const end = endLine ? Math.max(0, endLine - 1) : startLine;
-      const range = new vscode.Range(startLine, 0, end, 0);
-      editor.selection = new vscode.Selection(range.start, range.end);
-      editor.revealRange(
-        range,
-        vscode.TextEditorRevealType.InCenterIfOutsideViewport,
-      );
-    }
+    activeEditor = await openFileAtLine(
+      filePath,
+      line,
+      endLine,
+      undefined,
+      undefined,
+      vscode.TextEditorRevealType.InCenterIfOutsideViewport,
+    );
   }
 
   function updateBubble(text: string) {

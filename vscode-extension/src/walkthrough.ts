@@ -23,6 +23,7 @@ export function createWalkthrough(
   context: vscode.ExtensionContext,
   explanations: Explanations,
   getConfig: () => WalkthroughConfig,
+  log: vscode.LogOutputChannel,
 ): Walkthrough {
   const statusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
@@ -40,8 +41,16 @@ export function createWalkthrough(
 
   (async () => {
     for await (const state of coordinator) {
-      await renderState(state);
+      try {
+        log.info(
+          `state: ${state.phase} step=${state.stepIndex} selection=${JSON.stringify(state.selection)} speak=${!!state.speak}`,
+        );
+        await renderState(state);
+      } catch (err) {
+        log.error(`renderState failed: ${err}`);
+      }
     }
+    log.info("subscription loop ended");
   })();
 
   async function renderState(state: WalkthroughState) {
@@ -94,17 +103,21 @@ export function createWalkthrough(
     }
 
     if (state.speak) {
+      log.info(`speaking: "${state.speak.slice(0, 50)}..."`);
       await speak(state.speak, getConfig().voice);
+      log.info("speak done");
     }
   }
 
   function start(steps: WalkthroughStep[]): Result {
+    log.info(`start: ${steps.length} steps`);
     stopSpeaking();
     coordinator.start(steps);
     return { active: true, currentStep: 0, totalSteps: steps.length };
   }
 
   function navigate(action: string, step?: number): Result {
+    log.info(`navigate: ${action} step=${step}`);
     stopSpeaking();
     coordinator.navigate(action, step);
     if (action === "stop") return { ok: true, stopped: true };
@@ -118,6 +131,7 @@ export function createWalkthrough(
   }
 
   function stop() {
+    log.info("stop");
     stopSpeaking();
     coordinator.stop();
   }

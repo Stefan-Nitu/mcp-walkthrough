@@ -26,9 +26,12 @@ let server: http.Server | undefined;
 let socketPath: string | undefined;
 let walkthroughInstance: ReturnType<typeof createWalkthrough> | undefined;
 
+const log = vscode.window.createOutputChannel("Walkthrough", { log: true });
+
 export function activate(context: vscode.ExtensionContext) {
+  context.subscriptions.push(log);
   const explanations = createExplanations(context);
-  const walkthrough = createWalkthrough(context, explanations, getConfig);
+  const walkthrough = createWalkthrough(context, explanations, getConfig, log);
   walkthroughInstance = walkthrough;
 
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
