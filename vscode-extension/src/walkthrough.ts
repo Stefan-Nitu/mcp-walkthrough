@@ -1,34 +1,20 @@
 import * as vscode from "vscode";
 import type { Explanations } from "./explanations";
-import { buildFinalText, buildTeleprompterText } from "./teleprompter";
-import { speak, stopSpeaking, stripMarkdown } from "./tts";
+import { speak, stopSpeaking } from "./tts";
+import {
+  createWalkthroughCoordinator,
+  type WalkthroughConfig,
+  type WalkthroughState,
+  type WalkthroughStep,
+} from "./walkthrough-coordinator";
 
-export interface WalkthroughHighlight {
-  line: number;
-  endLine?: number;
-  narration: string;
-}
-
-export interface WalkthroughStep {
-  file: string;
-  line: number;
-  endLine?: number;
-  explanation: string;
-  title?: string;
-  highlights?: WalkthroughHighlight[];
-}
-
-export interface WalkthroughConfig {
-  voice: string;
-  voiceEnabled: boolean;
-  autoplay: boolean;
-}
+export type { WalkthroughConfig, WalkthroughStep };
 
 type Result = Record<string, unknown>;
 
 export interface Walkthrough {
-  start(steps: WalkthroughStep[]): Promise<Result>;
-  navigate(action: string, step?: number): Promise<Result>;
+  start(steps: WalkthroughStep[]): Result;
+  navigate(action: string, step?: number): Result;
   status(): Result;
   stop(): void;
 }
@@ -44,185 +30,96 @@ export function createWalkthrough(
   );
   context.subscriptions.push(statusBarItem);
 
+  const coordinator = createWalkthroughCoordinator(getConfig);
+
   context.subscriptions.push(
     vscode.commands.registerCommand("walkthrough.next", () => navigate("next")),
     vscode.commands.registerCommand("walkthrough.prev", () => navigate("prev")),
-    vscode.commands.registerCommand("walkthrough.stop", stop),
+    vscode.commands.registerCommand("walkthrough.stop", () => stop()),
   );
 
-  let steps: WalkthroughStep[] = [];
-  let currentStepIndex = -1;
-  let narrationAbort: AbortController | null = null;
+  (async () => {
+    for await (const state of coordinator) {
+      await renderState(state);
+    }
+  })();
 
-  async function start(newSteps: WalkthroughStep[]): Promise<Result> {
-    stop();
-    steps = newSteps;
-    currentStepIndex = 0;
-    await showCurrentStep();
-    runNarration(0);
-    return status();
-  }
+  async function renderState(state: WalkthroughState) {
+    switch (state.phase) {
+      case "inactive":
+        explanations.clear();
+        statusBarItem.hide();
+        return;
 
-  async function runNarration(startIndex: number) {
-    narrationAbort = new AbortController();
-    const signal = narrationAbort.signal;
-
-    for (let i = startIndex; i < steps.length; i++) {
-      if (signal.aborted) break;
-
-      if (i > startIndex) {
-        if (!getConfig().autoplay) break;
-        currentStepIndex = i;
-        await showCurrentStep();
-      }
-
-      if (!getConfig().voiceEnabled) break;
-
-      const step = steps[i];
-      if (!step) continue;
-
-      await speak(stripMarkdown(step.explanation), getConfig().voice);
-      if (signal.aborted) break;
-
-      if (step.highlights && step.highlights.length > 0) {
-        const parts: string[] = [step.explanation];
-
-        for (let h = 0; h < step.highlights.length; h++) {
-          if (signal.aborted) break;
-          const hl = step.highlights[h];
-
-          parts.push(hl.narration);
-          explanations.updateBubble(
-            buildTeleprompterText(parts, parts.length - 1),
+      case "show":
+        if (state.bubble && state.file) {
+          await explanations.show(
+            state.file,
+            state.selection?.line ?? 1,
+            state.selection?.endLine,
+            state.bubble.text,
+            state.bubble.title,
           );
-
-          await explanations.highlight(step.file, hl.line, hl.endLine);
-          await speak(stripMarkdown(hl.narration), getConfig().voice);
         }
+        break;
 
-        if (!signal.aborted) {
-          explanations.updateBubble(buildFinalText(parts, buildControls()));
+      case "highlight":
+        if (state.file && state.selection) {
+          await explanations.highlight(
+            state.file,
+            state.selection.line,
+            state.selection.endLine,
+          );
         }
-      }
+        if (state.bubble) {
+          explanations.updateBubble(state.bubble.text);
+        }
+        break;
+
+      case "idle":
+        if (state.bubble) {
+          explanations.updateBubble(state.bubble.text);
+        }
+        explanations.clearSelection();
+        break;
     }
 
-    narrationAbort = null;
+    if (state.statusLabel) {
+      statusBarItem.text = state.statusLabel;
+      statusBarItem.tooltip = "Click to stop walkthrough";
+      statusBarItem.command = "walkthrough.stop";
+      statusBarItem.show();
+    } else {
+      statusBarItem.hide();
+    }
+
+    if (state.speak) {
+      await speak(state.speak, getConfig().voice);
+    }
   }
 
-  function stopNarration() {
+  function start(steps: WalkthroughStep[]): Result {
     stopSpeaking();
-    narrationAbort?.abort();
-    narrationAbort = null;
+    coordinator.start(steps);
+    return { active: true, currentStep: 0, totalSteps: steps.length };
   }
 
-  async function navigate(action: string, step?: number): Promise<Result> {
-    if (steps.length === 0) {
-      return { ok: false, error: "No walkthrough active" };
-    }
-
-    stopNarration();
-
-    switch (action) {
-      case "stop":
-        stop();
-        return { ok: true, stopped: true };
-      case "pause":
-        stopNarration();
-        return { ok: true, paused: true };
-      case "resume":
-        runNarration(currentStepIndex);
-        return { ok: true, resumed: true };
-      case "next":
-        if (currentStepIndex < steps.length - 1) {
-          currentStepIndex++;
-        } else {
-          stop();
-          return { active: false, finished: true };
-        }
-        break;
-      case "prev":
-        if (currentStepIndex > 0) {
-          currentStepIndex--;
-        }
-        break;
-      case "goto":
-        if (step !== undefined && step >= 0 && step < steps.length) {
-          currentStepIndex = step;
-        }
-        break;
-    }
-
-    await showCurrentStep();
-    runNarration(currentStepIndex);
-    return status();
-  }
-
-  function buildControls(): string {
-    const modifier = process.platform === "darwin" ? "Cmd" : "Ctrl";
-    return `\n\n---\n\`${modifier}+Shift+→\` **Next** &nbsp;&nbsp; **|** &nbsp;&nbsp; \`${modifier}+Shift+←\` **Prev** &nbsp;&nbsp; **|** &nbsp;&nbsp; \`${modifier}+Shift+↓\` **Stop**`;
-  }
-
-  async function showCurrentStep() {
-    const step = steps[currentStepIndex];
-    if (!step) return;
-
-    const stepLabel = `${currentStepIndex + 1}/${steps.length}`;
-    const title = step.title
-      ? `${stepLabel}: ${step.title}`
-      : `Step ${stepLabel}`;
-    const hasHighlights = step.highlights && step.highlights.length > 0;
-
-    await explanations.show(
-      step.file,
-      step.line,
-      step.endLine,
-      hasHighlights ? step.explanation : step.explanation + buildControls(),
-      title,
-    );
-    updateStatusBar();
+  function navigate(action: string, step?: number): Result {
+    stopSpeaking();
+    coordinator.navigate(action, step);
+    if (action === "stop") return { ok: true, stopped: true };
+    if (action === "pause") return { ok: true, paused: true };
+    if (action === "resume") return { ok: true, resumed: true };
+    return { ok: true };
   }
 
   function status(): Result {
-    if (steps.length === 0) {
-      return { active: false };
-    }
-
-    const step = steps[currentStepIndex];
-    return {
-      active: true,
-      currentStep: currentStepIndex,
-      totalSteps: steps.length,
-      step: step
-        ? {
-            file: step.file,
-            line: step.line,
-            endLine: step.endLine,
-            title: step.title,
-          }
-        : null,
-    };
+    return { ok: true };
   }
 
   function stop() {
-    stopNarration();
-    steps = [];
-    currentStepIndex = -1;
-    explanations.clear();
-    statusBarItem.hide();
-  }
-
-  function updateStatusBar() {
-    if (steps.length === 0) {
-      statusBarItem.hide();
-      return;
-    }
-
-    const step = steps[currentStepIndex];
-    const title = step?.title || "";
-    statusBarItem.text = `$(book) ${currentStepIndex + 1}/${steps.length} ${title}`;
-    statusBarItem.tooltip = "Click to stop walkthrough";
-    statusBarItem.command = "walkthrough.stop";
-    statusBarItem.show();
+    stopSpeaking();
+    coordinator.stop();
   }
 
   return { start, navigate, status, stop };

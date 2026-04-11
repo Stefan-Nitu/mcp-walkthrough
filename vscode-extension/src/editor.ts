@@ -9,7 +9,7 @@ export async function openFileAtLine(
   endLine?: number,
   startChar?: number,
   endChar?: number,
-): Promise<void> {
+): Promise<vscode.TextEditor> {
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (workspaceRoot) {
     const resolved = resolve(filePath);
@@ -47,6 +47,7 @@ export async function openFileAtLine(
     new vscode.Range(startLine, 0, startLine, 0),
     vscode.TextEditorRevealType.AtTop,
   );
+  return editor;
 }
 
 export function getSelection(): Result {

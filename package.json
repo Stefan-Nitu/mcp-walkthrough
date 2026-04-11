@@ -39,6 +39,7 @@
     "lint": "biome check",
     "lint:fix": "biome check --write",
     "check": "bun run typecheck && bun run lint",
+    "dev:install": "bun run build && npm install -g . && node scripts/postinstall.cjs",
     "prepare": "husky"
   },
   "dependencies": {

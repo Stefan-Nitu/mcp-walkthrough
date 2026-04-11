@@ -23,6 +23,7 @@ export interface Explanations {
     endLine: number | undefined,
   ): Promise<void>;
   updateBubble(text: string): void;
+  clearSelection(): void;
   clear(): void;
   dispose(): void;
 }
@@ -38,6 +39,7 @@ export function createExplanations(
 
   let activeThread: vscode.CommentThread | null = null;
   let activeComment: vscode.Comment | null = null;
+  let activeEditor: vscode.TextEditor | null = null;
 
   async function show(
     filePath: string,
@@ -49,7 +51,13 @@ export function createExplanations(
     endChar?: number,
   ) {
     clear();
-    await openFileAtLine(filePath, line, endLine, startChar, endChar);
+    activeEditor = await openFileAtLine(
+      filePath,
+      line,
+      endLine,
+      startChar,
+      endChar,
+    );
 
     const uri = vscode.Uri.file(filePath);
     const startLine = Math.max(0, line - 1);
@@ -79,9 +87,10 @@ export function createExplanations(
     line: number,
     endLine: number | undefined,
   ) {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.uri.fsPath !== filePath) {
-      await openFileAtLine(filePath, line, endLine);
+    const editor =
+      activeEditor?.document.uri.fsPath === filePath ? activeEditor : null;
+    if (!editor) {
+      activeEditor = await openFileAtLine(filePath, line, endLine);
     } else {
       const startLine = Math.max(0, line - 1);
       const end = endLine ? Math.max(0, endLine - 1) : startLine;
@@ -103,6 +112,13 @@ export function createExplanations(
     activeThread.comments = [...activeThread.comments];
   }
 
+  function clearSelection() {
+    if (activeEditor) {
+      const pos = activeEditor.selection.active;
+      activeEditor.selection = new vscode.Selection(pos, pos);
+    }
+  }
+
   function clear() {
     if (activeThread) {
       activeThread.dispose();
@@ -111,5 +127,12 @@ export function createExplanations(
     }
   }
 
-  return { show, highlight, updateBubble, clear, dispose: clear };
+  return {
+    show,
+    highlight,
+    updateBubble,
+    clearSelection,
+    clear,
+    dispose: clear,
+  };
 }

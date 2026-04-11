@@ -258,9 +258,10 @@ server.registerTool(
   },
   async (args, extra) => {
     const voices = await listVoices();
-    let filtered = args.locale
+    const locale = args.locale;
+    let filtered = locale
       ? voices.filter((v) =>
-          v.locale.toLowerCase().startsWith(args.locale!.toLowerCase()),
+          v.locale.toLowerCase().startsWith(locale.toLowerCase()),
         )
       : voices;
     if (args.gender) {

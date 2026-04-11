@@ -78,8 +78,6 @@ export function activate(context: vscode.ExtensionContext) {
                   data.file as string,
                   hl.line,
                   hl.endLine,
-                  hl.narration,
-                  data.title as string | undefined,
                 );
                 await speak(stripMarkdown(hl.narration), getConfig().voice);
               }
@@ -99,8 +97,6 @@ export function activate(context: vscode.ExtensionContext) {
           data.file as string,
           data.line as number,
           data.endLine as number | undefined,
-          data.explanation as string,
-          data.title as string | undefined,
         );
         return { ok: true };
 

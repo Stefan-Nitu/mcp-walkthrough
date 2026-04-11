@@ -2,7 +2,7 @@
 
 > **Auto-generated** - Run `scripts/generate-project-tree.sh` to update
 
-Last updated: 2026-04-11 10:56:47
+Last updated: 2026-04-11 16:04:57
 
 ## Directory Structure
 
@@ -38,7 +38,8 @@ Last updated: 2026-04-11 10:56:47
 |   |-- postinstall.test.ts
 |   |-- socket.test.ts
 |   |-- teleprompter.test.ts
-|   `-- tts.test.ts
+|   |-- tts.test.ts
+|   `-- walkthrough-coordinator.test.ts
 |-- vscode-extension
 |   |-- out
 |   |   |-- config.js
@@ -60,25 +61,26 @@ Last updated: 2026-04-11 10:56:47
 |   |   |-- extension.ts
 |   |   |-- teleprompter.ts
 |   |   |-- tts.ts
+|   |   |-- walkthrough-coordinator.ts
 |   |   `-- walkthrough.ts
 |   |-- esbuild.js
 |   |-- package-lock.json
 |   |-- package.json
 |   |-- tsconfig.json
 |   `-- walkthrough-bridge.vsix
-|-- biome.json
 |-- CLAUDE.md
+|-- README.md
+|-- biome.json
 |-- package-lock.json
 |-- package.json
-|-- README.md
 |-- tsconfig.build.json
 `-- tsconfig.json
 
-10 directories, 56 files
+10 directories, 58 files
 ```
 
 ## Statistics
 
 - **Source files**: 7 TypeScript files
-- **Test files**: 6 TypeScript files
+- **Test files**: 7 TypeScript files
 

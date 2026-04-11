@@ -22,18 +22,7 @@
       }
     }
   },
-  "overrides": [
-    {
-      "includes": ["tests/**", "src/**"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noNonNullAssertion": "off"
-          }
-        }
-      }
-    }
-  ],
+  "overrides": [],
   "javascript": {
     "formatter": {
       "quoteStyle": "double"
