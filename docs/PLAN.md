@@ -57,6 +57,12 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
 - Enables sharing walkthroughs between team members
 - Agent can generate a walkthrough once, user replays it anytime
 
+### Distribution and installation
+- One-command install for all clients: `npx add-mcp mcp-walkthrough -- npx -y mcp-walkthrough`
+- Auto-detects Claude Code, Cursor, VS Code, Codex, Windsurf — writes config for each
+- Skill ships with the package (`.claude/skills/mcp-walkthrough/`)
+- Update README with one-liner install + skill setup
+
 ### ~~Extract modular core~~ (done)
 - Split into `editor.ts`, `explanations.ts`, `walkthrough.ts`
 - `extension.ts` is thin wiring
