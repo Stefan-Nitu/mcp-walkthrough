@@ -1,6 +1,6 @@
 {
   "name": "mcp-walkthrough",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "MCP server for interactive code walkthroughs - Claude-driven code tours",
   "type": "module",
   "main": "dist/index.js",
