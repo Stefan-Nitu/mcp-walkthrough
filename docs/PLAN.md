@@ -6,7 +6,7 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
 
 ## Current Status
 
-**v0.3.1** — Coordinator/shell architecture. Pure state machine yields `WalkthroughState` via `AsyncIterable`. Shell subscribes and renders. Selection clears after narration. Navigation works correctly with single-step narration and shell-driven autoplay.
+**v0.3.1** — Coordinator is a position-based state machine (`stepIndex`, `phase`, `highlightIndex`). Computes `WalkthroughState` on demand, pushes via a latest-value slot (no stale queue). Shell subscribes with `for await`, calls `coordinator.next("auto")` after each state. Manual `next("manual")` / `prev("manual")` invalidate the pending auto via `skipNextAuto`. Status label shows `Step N/M · Highlight X/Y` during highlights. Selection clears on stop; file switch delay is 150ms.
 
 ## Bugs
 
@@ -43,13 +43,6 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
 - `Cmd+Shift+↑` restarts current step from the beginning (re-narrate explanation + highlights)
 - Useful when you missed something or want to re-listen
 
-### Walkthrough skill for Claude Code
-- A skill that constructs walkthroughs with correct line numbers
-- Reads the target files, understands the code structure
-- Spawns a subagent to plan steps + highlights with verified line ranges
-- Main agent just triggers the skill, e.g. `/walkthrough src/tts.ts`
-- Eliminates line number guessing — the skill reads the file first
-
 ### Walkthrough export/import
 - Save walkthroughs to JSON files so they can be replayed later
 - Export: save current walkthrough steps + highlights to `.walkthrough.json`
@@ -68,21 +61,17 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
 - `extension.ts` is thin wiring
 - Cockpit imports via adapter with constructor injection
 
-### Extract use cases from coordinator (Phase 2)
-The coordinator (`walkthrough-coordinator.ts`) is a working blob. Seams to extract:
-- **narrateStep** — the show → highlight → idle flow. Currently inline in `runNarration`. Pure, no vscode deps. Yields `WalkthroughState` frames.
-- **validateSteps** — highlight range validation. Already a separate function, could move to its own module.
-- **stripMarkdown** — TTS text prep. Already exported, used by both coordinator and MCP server's `tts.ts`.
-- **buildTeleprompterText / buildFinalText** — bubble text formatting. Pure functions, duplicated from old `teleprompter.ts`.
-- **channel** — async push/consume channel. Generic utility, could be reused.
+### ~~Coordinator simplification~~ (done)
+- Replaced the `runNarration` blob with a position-based state machine
+- Computes `WalkthroughState` on demand (no precomputed flat list)
+- Latest-value slot replaces the channel — push overwrites, no stale queue
+- `next("manual"|"auto")` / `prev("manual"|"auto")` handle autoplay and stale-auto suppression in the coordinator
+- Autoplay lives in `next("auto")` — at idle it no-ops when autoplay is off
 
-Per architecture principles: extract when a second consumer appears. Currently each has one consumer. Monitor for duplication.
-
-### Add shell autoplay + navigation tests
-Autoplay (shell calls `navigate("next")` on idle) and manual navigation suppression (`manualNav` flag) are untested. The logic lives in the shell which has vscode deps. Options:
-- Extract autoplay decision into coordinator (testable)
-- Create a shell adapter that's testable without vscode
-- Integration test via MCP inspector
+### Idle timer after walkthrough ends
+- After the walkthrough completes, leave the last state visible for 15s
+- Reset the timer on any user activity (keyboard, mouse)
+- Clear the bubble and selection after the timeout
 
 ### Debug logging cleanup
 - Currently using `log.info` for all logs because VS Code `LogOutputChannel` debug level filtering doesn't work as expected

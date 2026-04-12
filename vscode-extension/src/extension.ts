@@ -9,7 +9,6 @@ import { createExplanations } from "./explanations";
 import { cleanupTts, speak, stripMarkdown } from "./tts";
 import type { WalkthroughStep } from "./walkthrough";
 import { createWalkthrough } from "./walkthrough";
-import type { NavigateAction } from "./walkthrough-coordinator";
 
 const SOCKET_DIR = "/tmp";
 const SOCKET_PREFIX = "walkthrough-bridge-";
@@ -111,11 +110,16 @@ export function activate(context: vscode.ExtensionContext) {
       case "/walkthrough":
         return walkthrough.start(data.steps as WalkthroughStep[]);
 
-      case "/walkthrough/navigate":
-        return walkthrough.navigate(
-          data.action as NavigateAction,
-          data.step as number,
-        );
+      case "/walkthrough/navigate": {
+        const action = data.action as string;
+        if (action === "next") return walkthrough.next();
+        if (action === "prev") return walkthrough.prev();
+        if (action === "stop") {
+          walkthrough.stop();
+          return { ok: true, stopped: true };
+        }
+        return { ok: true };
+      }
 
       case "/walkthrough/status":
         return walkthrough.status();

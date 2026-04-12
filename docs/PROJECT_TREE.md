@@ -2,7 +2,7 @@
 
 > **Auto-generated** - Run `scripts/generate-project-tree.sh` to update
 
-Last updated: 2026-04-11 20:40:02
+Last updated: 2026-04-12 22:25:30
 
 ## Directory Structure
 
@@ -37,36 +37,26 @@ Last updated: 2026-04-11 20:40:02
 |   |-- code-cli.test.ts
 |   |-- postinstall.test.ts
 |   |-- socket.test.ts
-|   |-- teleprompter.test.ts
 |   |-- tts.test.ts
 |   `-- walkthrough-coordinator.test.ts
 |-- vscode-extension
 |   |-- out
-|   |   |-- config.js
-|   |   |-- config.js.map
-|   |   |-- editor.js
-|   |   |-- editor.js.map
-|   |   |-- explanations.js
-|   |   |-- explanations.js.map
 |   |   |-- extension.js
-|   |   |-- extension.js.map
-|   |   |-- tts.js
-|   |   |-- tts.js.map
-|   |   |-- walkthrough.js
-|   |   `-- walkthrough.js.map
+|   |   `-- extension.js.map
 |   |-- src
 |   |   |-- config.ts
 |   |   |-- editor.ts
 |   |   |-- explanations.ts
 |   |   |-- extension.ts
-|   |   |-- teleprompter.ts
 |   |   |-- tts.ts
+|   |   |-- types.ts
 |   |   |-- walkthrough-coordinator.ts
 |   |   `-- walkthrough.ts
 |   |-- esbuild.js
 |   |-- package-lock.json
 |   |-- package.json
 |   |-- tsconfig.json
+|   |-- walkthrough-bridge-0.0.1.vsix
 |   `-- walkthrough-bridge.vsix
 |-- CLAUDE.md
 |-- README.md
@@ -76,11 +66,11 @@ Last updated: 2026-04-11 20:40:02
 |-- tsconfig.build.json
 `-- tsconfig.json
 
-10 directories, 58 files
+10 directories, 48 files
 ```
 
 ## Statistics
 
 - **Source files**: 7 TypeScript files
-- **Test files**: 7 TypeScript files
+- **Test files**: 6 TypeScript files
 

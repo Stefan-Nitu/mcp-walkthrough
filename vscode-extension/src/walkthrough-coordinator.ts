@@ -1,23 +1,11 @@
-export interface WalkthroughHighlight {
-  line: number;
-  endLine?: number;
-  narration: string;
-}
+import { stripMarkdown } from "./tts";
+import type { WalkthroughConfig, WalkthroughStep } from "./types";
 
-export interface WalkthroughStep {
-  file: string;
-  line: number;
-  endLine?: number;
-  explanation: string;
-  title?: string;
-  highlights?: WalkthroughHighlight[];
-}
-
-export interface WalkthroughConfig {
-  voice: string;
-  voiceEnabled: boolean;
-  autoplay: boolean;
-}
+export type {
+  WalkthroughConfig,
+  WalkthroughHighlight,
+  WalkthroughStep,
+} from "./types";
 
 export type NarrationPhase = "show" | "highlight" | "idle" | "inactive";
 
@@ -39,96 +27,25 @@ export function isActive(state: WalkthroughState): boolean {
 const CONTROLS_MODIFIER = process.platform === "darwin" ? "Cmd" : "Ctrl";
 const CONTROLS = `\n\n---\n\`${CONTROLS_MODIFIER}+Shift+→\` **Next** &nbsp;&nbsp; **|** &nbsp;&nbsp; \`${CONTROLS_MODIFIER}+Shift+←\` **Prev** &nbsp;&nbsp; **|** &nbsp;&nbsp; \`${CONTROLS_MODIFIER}+Shift+↓\` **Stop**`;
 
-function buildTeleprompterText(parts: string[], activeIndex: number): string {
-  return parts
-    .map((p, idx) => (idx === activeIndex ? `**${p}**` : p))
-    .join("\n\n");
-}
-
-function buildFinalText(parts: string[], controls: string): string {
-  return parts.join("\n\n") + controls;
-}
-
-export function stripMarkdown(text: string): string {
-  return text
-    .replace(/\\n/g, " ")
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\*\*([^*]*)\*\*/g, "$1")
-    .replace(/\*([^*]*)\*/g, "$1")
-    .replace(/^[-*+]\s+/gm, "")
-    .replace(/^\d+\.\s+/gm, "")
-    .replace(/^>\s+/gm, "")
-    .replace(/\n{2,}/g, " ")
-    .replace(/\n/g, " ")
-    .trim();
-}
-
-export type NavigateAction =
-  | "next"
-  | "prev"
-  | "stop"
-  | "pause"
-  | "resume"
-  | "goto";
-
 export interface WalkthroughCoordinator
   extends AsyncIterable<WalkthroughState> {
   start(steps: WalkthroughStep[]): void;
-  navigate(action: NavigateAction, step?: number): void;
+  next(type: "manual" | "auto"): void;
+  prev(type: "manual" | "auto"): void;
+  restart(): void;
   stop(): void;
 }
 
-function createChannel<T>() {
-  const queue: T[] = [];
-  let waiting: ((value: IteratorResult<T>) => void) | null = null;
-  let done = false;
-
-  function push(value: T) {
-    if (done) return;
-    if (waiting) {
-      const resolve = waiting;
-      waiting = null;
-      resolve({ value, done: false });
-    } else {
-      queue.push(value);
+function validateStep(step: WalkthroughStep) {
+  const stepEnd = step.endLine ?? step.line;
+  for (const hl of step.highlights ?? []) {
+    const hlEnd = hl.endLine ?? hl.line;
+    if (hl.line < step.line || hlEnd > stepEnd) {
+      throw new Error(
+        `Highlight ${hl.line}-${hlEnd} is outside step range ${step.line}-${stepEnd}`,
+      );
     }
   }
-
-  function flush() {
-    queue.length = 0;
-  }
-
-  function close() {
-    done = true;
-    if (waiting) {
-      const resolve = waiting;
-      waiting = null;
-      resolve({ value: undefined as T, done: true });
-    }
-  }
-
-  const iterator: AsyncIterableIterator<T> = {
-    next(): Promise<IteratorResult<T>> {
-      const queued = queue.shift();
-      if (queued !== undefined)
-        return Promise.resolve({ value: queued, done: false });
-      if (done) return Promise.resolve({ value: undefined as T, done: true });
-      return new Promise((resolve) => {
-        waiting = resolve;
-      });
-    },
-    return(): Promise<IteratorResult<T>> {
-      return Promise.resolve({ value: undefined as T, done: true });
-    },
-    [Symbol.asyncIterator]() {
-      return this;
-    },
-  };
-
-  return { push, flush, close, iterator };
 }
 
 export function createWalkthroughCoordinator(
@@ -136,9 +53,34 @@ export function createWalkthroughCoordinator(
   log: (msg: string) => void = () => {},
 ): WalkthroughCoordinator {
   let steps: WalkthroughStep[] = [];
-  let currentStepIndex = -1;
-  let abortController: AbortController | null = null;
-  const channel = createChannel<WalkthroughState>();
+  let stepIndex = -1;
+  let phase: NarrationPhase = "inactive";
+  let highlightIndex = 0;
+  let skipNextAuto = false;
+
+  let latest: WalkthroughState | null = null;
+  let waiting: ((value: WalkthroughState) => void) | null = null;
+
+  function pushState(state: WalkthroughState) {
+    if (waiting) {
+      const resolve = waiting;
+      waiting = null;
+      resolve(state);
+    } else {
+      latest = state;
+    }
+  }
+
+  function read(): Promise<WalkthroughState> {
+    if (latest !== null) {
+      const v = latest;
+      latest = null;
+      return Promise.resolve(v);
+    }
+    return new Promise((resolve) => {
+      waiting = resolve;
+    });
+  }
 
   function inactiveState(): WalkthroughState {
     return {
@@ -153,195 +95,203 @@ export function createWalkthroughCoordinator(
     };
   }
 
-  function emit(
-    phase: NarrationPhase,
-    stepIdx: number,
-    partial: Partial<WalkthroughState>,
-  ) {
-    const step = steps[stepIdx];
-    const title = step?.title || "";
-    channel.push({
-      phase,
-      stepIndex: stepIdx,
-      totalSteps: steps.length,
-      file: null,
-      selection: null,
-      bubble: null,
-      speak: null,
-      statusLabel: `$(book) ${stepIdx + 1}/${steps.length} ${title}`,
-      ...partial,
-    });
-  }
+  function computeState(): WalkthroughState {
+    if (phase === "inactive" || stepIndex < 0) return inactiveState();
 
-  async function runNarration() {
-    log(`runNarration step=${currentStepIndex}`);
-    abortController = new AbortController();
-    const signal = abortController.signal;
+    const step = steps[stepIndex];
+    if (!step) return inactiveState();
+    const highlights = step.highlights ?? [];
+    const voiceEnabled = getConfig().voiceEnabled;
 
-    const i = currentStepIndex;
-    const step = steps[i];
-    if (!step || signal.aborted) {
-      abortController = null;
-      return;
-    }
-
-    const hasHighlights = step.highlights && step.highlights.length > 0;
-    const stepLabel = `${i + 1}/${steps.length}`;
+    const stepLabel = `Step ${stepIndex + 1}/${steps.length}`;
+    const hlCount = step.highlights?.length ?? 0;
+    const hlLabel =
+      phase === "highlight" && hlCount > 0
+        ? ` · Highlight ${highlightIndex + 1}/${hlCount}`
+        : "";
     const title = step.title
-      ? `${stepLabel}: ${step.title}`
-      : `Step ${stepLabel}`;
-    log(`runNarration step=${i} title="${step.title ?? ""}"`);
+      ? `${stepLabel}${hlLabel}: ${step.title}`
+      : `${stepLabel}${hlLabel}`;
+    const statusLabel = `$(book) ${stepLabel}${hlLabel}${step.title ? ` · ${step.title}` : ""}`;
 
-    emit("show", i, {
+    const bubbleBase = buildBubbleText(
+      step.explanation,
+      highlights,
+      phase,
+      highlightIndex,
+    );
+
+    let selection: { line: number; endLine?: number } | null = null;
+    let speak: string | null = null;
+
+    if (phase === "show") {
+      selection = { line: step.line, endLine: step.endLine };
+      speak = voiceEnabled ? stripMarkdown(step.explanation) : null;
+    } else if (phase === "highlight") {
+      const hl = highlights[highlightIndex];
+      if (hl) {
+        selection = { line: hl.line, endLine: hl.endLine };
+        speak = voiceEnabled ? stripMarkdown(hl.narration) : null;
+      }
+    }
+
+    return {
+      phase,
+      stepIndex,
+      totalSteps: steps.length,
       file: step.file,
-      selection: { line: step.line, endLine: step.endLine },
-      bubble: {
-        text: hasHighlights ? step.explanation : step.explanation + CONTROLS,
-        title,
-      },
-      speak: getConfig().voiceEnabled ? stripMarkdown(step.explanation) : null,
-    });
-
-    await new Promise((r) => setTimeout(r, 0));
-    if (signal.aborted || !getConfig().voiceEnabled) {
-      abortController = null;
-      return;
-    }
-
-    if (step.highlights && step.highlights.length > 0) {
-      const parts: string[] = [step.explanation];
-
-      for (let h = 0; h < step.highlights.length; h++) {
-        if (signal.aborted) break;
-        const hl = step.highlights[h];
-        if (!hl) continue;
-
-        parts.push(hl.narration);
-
-        emit("highlight", i, {
-          file: step.file,
-          selection: { line: hl.line, endLine: hl.endLine },
-          bubble: {
-            text: buildTeleprompterText(parts, parts.length - 1),
-            title,
-          },
-          speak: stripMarkdown(hl.narration),
-        });
-
-        await new Promise((r) => setTimeout(r, 0));
-        if (signal.aborted) break;
-      }
-
-      if (!signal.aborted) {
-        emit("idle", i, {
-          file: step.file,
-          selection: null,
-          bubble: { text: buildFinalText(parts, CONTROLS), title },
-        });
-      }
-    } else if (!signal.aborted) {
-      emit("idle", i, {
-        file: step.file,
-        selection: null,
-        bubble: { text: step.explanation + CONTROLS, title },
-      });
-    }
-
-    abortController = null;
+      selection,
+      bubble: { text: bubbleBase + CONTROLS, title },
+      speak,
+      statusLabel,
+    };
   }
 
-  function cancelNarration() {
-    abortController?.abort();
-    abortController = null;
-    channel.flush();
+  function buildBubbleText(
+    explanation: string,
+    highlights: { narration: string }[],
+    ph: NarrationPhase,
+    hlIdx: number,
+  ): string {
+    if (ph === "show") return explanation;
+    if (ph === "highlight") {
+      const parts = [explanation];
+      for (let i = 0; i <= hlIdx; i++) {
+        const h = highlights[i];
+        if (h) parts.push(h.narration);
+      }
+      return parts
+        .map((p, i) => (i === parts.length - 1 ? `**${p}**` : p))
+        .join("\n\n");
+    }
+    if (ph === "idle") {
+      const parts = [explanation, ...highlights.map((h) => h.narration)];
+      return parts.join("\n\n");
+    }
+    return "";
   }
 
-  function validateSteps(stepsToValidate: WalkthroughStep[]) {
-    for (const step of stepsToValidate) {
-      const stepEnd = step.endLine ?? step.line;
-      for (const hl of step.highlights ?? []) {
-        const hlEnd = hl.endLine ?? hl.line;
-        if (hl.line < step.line || hlEnd > stepEnd) {
-          throw new Error(
-            `Highlight line ${hl.line}-${hlEnd} is outside step range ${step.line}-${stepEnd}`,
-          );
-        }
-      }
-    }
+  function push() {
+    pushState(computeState());
   }
 
   function start(newSteps: WalkthroughStep[]) {
-    validateSteps(newSteps);
-    cancelNarration();
+    for (const step of newSteps) validateStep(step);
     steps = newSteps;
-    currentStepIndex = 0;
-    runNarration();
+    stepIndex = 0;
+    phase = "show";
+    highlightIndex = 0;
+    skipNextAuto = false;
+    latest = null;
+    log(`start: ${newSteps.length} steps`);
+    push();
   }
 
-  function navigate(action: NavigateAction, step?: number) {
-    if (steps.length === 0) return;
+  function numHighlights(): number {
+    return steps[stepIndex]?.highlights?.length ?? 0;
+  }
 
-    log(`navigate: ${action} currentStep=${currentStepIndex}`);
+  function next(type: "manual" | "auto") {
+    if (phase === "inactive") return;
 
-    switch (action) {
-      case "stop":
-        stop();
+    if (type === "auto") {
+      if (skipNextAuto) {
+        skipNextAuto = false;
         return;
-      case "pause":
-        cancelNarration();
-        return;
-      case "resume":
-        cancelNarration();
-        runNarration();
-        return;
-      case "next":
-        if (currentStepIndex < steps.length - 1) {
-          cancelNarration();
-          currentStepIndex++;
-          log(`next: now at step=${currentStepIndex}`);
-        } else {
-          stop();
-          return;
-        }
-        break;
-      case "prev":
-        if (currentStepIndex > 0) {
-          cancelNarration();
-          currentStepIndex--;
-          log(`prev: now at step=${currentStepIndex}`);
-        } else {
-          log(`prev: already at 0, no-op`);
-          return;
-        }
-        break;
-      case "goto":
-        if (step !== undefined && step >= 0 && step < steps.length) {
-          cancelNarration();
-          currentStepIndex = step;
-        } else {
-          return;
-        }
-        break;
-      default:
-        return;
+      }
+      if (phase === "idle" && !getConfig().autoplay) return;
+    } else {
+      skipNextAuto = true;
     }
 
-    runNarration();
+    if (phase === "show") {
+      if (numHighlights() > 0) {
+        phase = "highlight";
+        highlightIndex = 0;
+      } else {
+        phase = "idle";
+      }
+    } else if (phase === "highlight") {
+      if (highlightIndex < numHighlights() - 1) {
+        highlightIndex++;
+      } else {
+        phase = "idle";
+      }
+    } else if (phase === "idle") {
+      if (stepIndex < steps.length - 1) {
+        stepIndex++;
+        phase = "show";
+        highlightIndex = 0;
+      } else {
+        stop();
+        return;
+      }
+    }
+
+    log(`next(${type}): step=${stepIndex} phase=${phase} hl=${highlightIndex}`);
+    push();
+  }
+
+  function prev(type: "manual" | "auto") {
+    if (phase === "inactive") return;
+    if (type === "manual") skipNextAuto = true;
+
+    if (phase === "highlight") {
+      if (highlightIndex > 0) {
+        highlightIndex--;
+      } else {
+        phase = "show";
+      }
+    } else {
+      // idle or show → jump to previous step's show
+      if (stepIndex > 0) {
+        stepIndex--;
+        phase = "show";
+        highlightIndex = 0;
+      } else {
+        return;
+      }
+    }
+
+    log(`prev(${type}): step=${stepIndex} phase=${phase} hl=${highlightIndex}`);
+    push();
+  }
+
+  function restart() {
+    skipNextAuto = true;
+    if (phase === "inactive") return;
+    if (numHighlights() > 0) {
+      phase = "highlight";
+      highlightIndex = 0;
+    } else {
+      phase = "show";
+    }
+    log(`restart: step=${stepIndex} phase=${phase}`);
+    push();
   }
 
   function stop() {
-    cancelNarration();
     steps = [];
-    currentStepIndex = -1;
-    channel.push(inactiveState());
+    stepIndex = -1;
+    phase = "inactive";
+    highlightIndex = 0;
+    skipNextAuto = false;
+    push();
   }
 
   return {
     start,
-    navigate,
+    next,
+    prev,
+    restart,
     stop,
     [Symbol.asyncIterator]() {
-      return channel.iterator;
+      return {
+        next: async () => ({ value: await read(), done: false }),
+        [Symbol.asyncIterator]() {
+          return this;
+        },
+      };
     },
   };
 }

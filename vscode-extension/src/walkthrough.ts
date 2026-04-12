@@ -3,7 +3,6 @@ import type { Explanations } from "./explanations";
 import { speak, stopSpeaking } from "./tts";
 import {
   createWalkthroughCoordinator,
-  type NavigateAction,
   type WalkthroughConfig,
   type WalkthroughState,
   type WalkthroughStep,
@@ -15,7 +14,8 @@ type Result = Record<string, unknown>;
 
 export interface Walkthrough {
   start(steps: WalkthroughStep[]): Result;
-  navigate(action: NavigateAction, step?: number): Result;
+  next(): Result;
+  prev(): Result;
   status(): Result;
   stop(): void;
 }
@@ -35,11 +35,10 @@ export function createWalkthrough(
   const coordinator = createWalkthroughCoordinator(getConfig, (msg) =>
     log.info(`[coord] ${msg}`),
   );
-  let manualNav = false;
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("walkthrough.next", () => navigate("next")),
-    vscode.commands.registerCommand("walkthrough.prev", () => navigate("prev")),
+    vscode.commands.registerCommand("walkthrough.next", () => next()),
+    vscode.commands.registerCommand("walkthrough.prev", () => prev()),
     vscode.commands.registerCommand("walkthrough.stop", () => stop()),
   );
 
@@ -53,13 +52,14 @@ export function createWalkthrough(
       } catch (err) {
         log.error(`renderState failed: ${err}`);
       }
+      coordinator.next("auto");
     }
-    log.info("subscription loop ended");
   })();
 
   async function renderState(state: WalkthroughState) {
     switch (state.phase) {
       case "inactive":
+        explanations.clearSelection();
         explanations.clear();
         statusBarItem.hide();
         return;
@@ -94,14 +94,6 @@ export function createWalkthrough(
           explanations.updateBubble(state.bubble.text);
         }
         explanations.clearSelection();
-        if (
-          !manualNav &&
-          getConfig().autoplay &&
-          state.stepIndex < state.totalSteps - 1
-        ) {
-          coordinator.navigate("next");
-        }
-        manualNav = false;
         break;
     }
 
@@ -128,14 +120,17 @@ export function createWalkthrough(
     return { active: true, currentStep: 0, totalSteps: steps.length };
   }
 
-  function navigate(action: NavigateAction, step?: number): Result {
-    log.info(`navigate: ${action} step=${step}`);
-    manualNav = action === "next" || action === "prev" || action === "goto";
+  function next(): Result {
+    log.info("next");
     stopSpeaking();
-    coordinator.navigate(action, step);
-    if (action === "stop") return { ok: true, stopped: true };
-    if (action === "pause") return { ok: true, paused: true };
-    if (action === "resume") return { ok: true, resumed: true };
+    coordinator.next("manual");
+    return { ok: true };
+  }
+
+  function prev(): Result {
+    log.info("prev");
+    stopSpeaking();
+    coordinator.prev("manual");
     return { ok: true };
   }
 
@@ -149,5 +144,5 @@ export function createWalkthrough(
     coordinator.stop();
   }
 
-  return { start, navigate, status, stop };
+  return { start, next, prev, status, stop };
 }

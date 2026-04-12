@@ -35,7 +35,7 @@ export async function openFileAtLine(
     } else {
       vscode.commands.executeCommand("workbench.action.focusPanel");
     }
-  }, 300);
+  }, 150);
 
   const startLine = Math.max(0, line - 1);
   const end = endLine ? Math.max(0, endLine - 1) : startLine;
