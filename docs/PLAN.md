@@ -6,6 +6,8 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
 
 ## Current Status
 
+**v0.4.0** — Tool surface consolidated from 8 → 5 tools. Merged `explain_code`, `clear_explanations`, `walkthrough_status` into `walkthrough` (dispatches by args: 1-step-with-explanation → inline explain, 1-step-no-explanation → highlight only, N-steps → tour, `action: "clear"` → clear bubbles, `action: "next|prev|goto|stop|pause|resume"` → navigate, empty → status). Kept `show_code` as the ergonomic quick-highlight alias. Renamed `walkthrough_voice` → `walkthrough_voice_selection`. Dispatch logic lives in `src/use-cases/walkthrough-dispatcher.ts` as `WalkthroughDispatcherUseCase` (class with `execute()`, discriminated union result, pure — matches the architecture skill's use-case shape and project-organization skill's naming conventions). `makeSUT()` factory in tests. `WalkthroughStep.explanation` now optional. Tool descriptions rewritten using the `tool-descriptions` skill (3–4 sentence template + sibling disambiguation + explicit "proper usage: highlights[] for multi-point steps, no numbered lists for TTS").
+
 **v0.3.1** — Coordinator is a position-based state machine (`stepIndex`, `phase`, `highlightIndex`). Computes `WalkthroughState` on demand, pushes via a latest-value slot (no stale queue). Shell subscribes with `for await`, calls `coordinator.next("auto")` after each state. Manual `next("manual")` / `prev("manual")` invalidate the pending auto via `skipNextAuto`. Status label shows `Step N/M · Highlight X/Y` during highlights. Selection clears on stop; file switch delay is 150ms.
 
 ## Bugs

@@ -59,18 +59,17 @@ Text in a terminal isn't enough when an AI explains a solution. MCP Walkthrough 
 
 | Tool | Description |
 |---|---|
-| **walkthrough** | Start a multi-step walkthrough or navigate (next/prev/goto/stop/pause/resume) |
-| **explain_code** | Highlight lines + show explanation bubble with optional sub-range highlights |
+| **walkthrough** | One tool for all code presentation — 1 step with `explanation` shows an inline bubble; 1 step without `explanation` highlights only; N steps start a narrated tour; `action: "clear"` clears bubbles; `action` in `next`/`prev`/`goto`/`stop`/`pause`/`resume` navigates; empty args returns status |
+| **show_code** | Open a file and highlight specific lines — ergonomic shortcut for the no-commentary case |
 | **settings** | Global config: voice, bubbles, autoplay, autoplayDelay |
-| **walkthrough_voice** | Change narrator voice, audition voices, list available |
-| **walkthrough_status** | Get current walkthrough state |
-| **show_code** | Open a file and highlight specific lines |
-| **clear_explanations** | Remove all explanation bubbles |
+| **walkthrough_voice_selection** | Change narrator voice, audition voices, list available |
 | **get_selection** | Read the currently highlighted code in VS Code |
 
 ### walkthrough
 
-Start a walkthrough or control an active one.
+The single entry point for code presentation — dispatches by arguments.
+
+**Multi-step narrated tour** (N steps):
 
 ```json
 {
@@ -90,14 +89,30 @@ Start a walkthrough or control an active one.
 }
 ```
 
-Navigate with `{ "action": "next" }`, `"prev"`, `"goto"`, `"stop"`, `"pause"`, `"resume"`.
-
 **With highlights (teleprompter):**
-1. Bubble shows `explanation` — TTS narrates it
-2. Each highlight appends `narration` in **bold** — selection moves to the highlight's lines
-3. After the last highlight, all text unbolds and navigation controls appear
+- Bubble shows `explanation` — TTS narrates it
+- Each highlight appends `narration` in **bold** — selection moves to the highlight's lines
+- After the last highlight, all text unbolds and navigation controls appear
 
 **Without highlights:** Simple bubble + full narration of the explanation.
+
+**Single-step explain** (1 step with `explanation`): same shape, one entry in `steps`. Renders one bubble, no tour state.
+
+**Highlight only** (1 step without `explanation`): `{ "steps": [{ "file": "…", "line": 10, "endLine": 15 }] }`. Equivalent to `show_code`.
+
+**Navigation:** `{ "action": "next" | "prev" | "goto" | "stop" | "pause" | "resume" }`. For `goto`, pass `step` (0-based index).
+
+**Clear bubbles:** `{ "action": "clear" }`.
+
+**Status:** call with no arguments — returns `{ active, currentStep, totalSteps, … }`.
+
+### show_code
+
+Ergonomic single-shot highlight — same as a `walkthrough` with one step that has no `explanation`.
+
+```json
+{ "file": "/absolute/path/to/file.ts", "line": 10, "endLine": 15 }
+```
 
 ### settings
 
@@ -140,7 +155,7 @@ TTS runs in the VS Code extension, not the MCP server. Keyboard shortcuts trigge
 
 ```bash
 bun install
-bun test              # 60 tests
+bun test              # 88 tests
 bun run build         # Builds MCP server + VS Code extension
 bun run typecheck     # Type checking
 bun run lint          # Biome linting

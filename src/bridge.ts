@@ -203,7 +203,7 @@ export interface WalkthroughStep {
   file: string;
   line: number;
   endLine?: number;
-  explanation: string;
+  explanation?: string;
   title?: string;
   highlights?: WalkthroughHighlight[];
 }

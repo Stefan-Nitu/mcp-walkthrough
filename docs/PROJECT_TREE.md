@@ -2,7 +2,7 @@
 
 > **Auto-generated** - Run `scripts/generate-project-tree.sh` to update
 
-Last updated: 2026-04-12 22:25:30
+Last updated: 2026-04-13 11:02:10
 
 ## Directory Structure
 
@@ -24,6 +24,8 @@ Last updated: 2026-04-12 22:25:30
 |   |-- postinstall.cjs
 |   `-- test-open-file.ts
 |-- src
+|   |-- use-cases
+|   |   `-- walkthrough-dispatcher.ts
 |   |-- utils
 |   |   `-- logger.ts
 |   |-- bridge.ts
@@ -38,7 +40,8 @@ Last updated: 2026-04-12 22:25:30
 |   |-- postinstall.test.ts
 |   |-- socket.test.ts
 |   |-- tts.test.ts
-|   `-- walkthrough-coordinator.test.ts
+|   |-- walkthrough-coordinator.test.ts
+|   `-- walkthrough-dispatcher.test.ts
 |-- vscode-extension
 |   |-- out
 |   |   |-- extension.js
@@ -66,11 +69,11 @@ Last updated: 2026-04-12 22:25:30
 |-- tsconfig.build.json
 `-- tsconfig.json
 
-10 directories, 48 files
+11 directories, 50 files
 ```
 
 ## Statistics
 
-- **Source files**: 7 TypeScript files
-- **Test files**: 6 TypeScript files
+- **Source files**: 8 TypeScript files
+- **Test files**: 7 TypeScript files
 

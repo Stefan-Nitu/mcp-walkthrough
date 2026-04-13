@@ -20,7 +20,10 @@ import {
 } from "./bridge.js";
 import { getConfig, updateConfig } from "./config.js";
 import { cleanupTts, listVoices, speak, stopSpeaking } from "./tts.js";
+import { WalkthroughDispatcherUseCase } from "./use-cases/walkthrough-dispatcher.js";
 import { flushLogs, logger } from "./utils/logger.js";
+
+const walkthroughDispatcher = new WalkthroughDispatcherUseCase();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -37,7 +40,7 @@ server.registerTool(
   "show_code",
   {
     description:
-      "Open a file in VS Code and highlight specific lines. Use this to walk the user through code.",
+      "Open a file in VS Code and highlight specific lines without any explanation bubble. Use when the user asks to show, open, jump to, or point at specific code with no commentary needed. Do NOT use when you need to explain what the code does — use the walkthrough tool with a step that includes an `explanation`. Do NOT use for multi-step tours — use walkthrough with multiple steps. Line numbers are 1-based; character offsets are 0-based.",
     inputSchema: {
       file: z.string().describe("Absolute path to the file"),
       line: z.number().describe("Start line (1-based)"),
@@ -60,75 +63,17 @@ server.registerTool(
   },
 );
 
-server.registerTool(
-  "explain_code",
-  {
-    description:
-      "Open a file in VS Code, highlight lines, and show an inline markdown explanation bubble. Renders as a VS Code comment widget. Use actual newlines for paragraphs, avoid ## headers (they render too large — use **bold** instead). Inline code, code blocks, lists, and links all work.",
-    inputSchema: {
-      file: z.string().describe("Absolute path to the file"),
-      line: z.number().describe("Start line (1-based)"),
-      endLine: z.number().optional().describe("End line (1-based)"),
-      explanation: z
-        .string()
-        .describe(
-          "Markdown explanation. Use real newlines for paragraphs, NOT literal backslash-n. Avoid ## headers (too large) — use **bold** instead.",
-        ),
-      title: z.string().optional().describe("Title for the explanation"),
-      startChar: z.number().optional().describe("Start character (0-based)"),
-      endChar: z.number().optional().describe("End character (0-based)"),
-      highlights: z
-        .array(
-          z.object({
-            line: z.number().describe("Start line (1-based)"),
-            endLine: z.number().optional().describe("End line (1-based)"),
-            narration: z.string().describe("Spoken text for this highlight."),
-          }),
-        )
-        .optional()
-        .describe(
-          "Sub-range highlights. Selection and bubble move through each as TTS narrates.",
-        ),
-    },
-  },
-  async (args) => {
-    const result = await showExplanation(
-      args.file,
-      args.line,
-      args.endLine,
-      args.explanation,
-      args.title,
-      args.startChar,
-      args.endChar,
-      args.highlights,
-    );
-    return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
-    };
-  },
-);
-
-server.registerTool(
-  "clear_explanations",
-  {
-    description: "Remove all walkthrough explanation bubbles from the editor.",
-  },
-  async () => {
-    const result = await clearExplanations();
-    return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
-    };
-  },
-);
-
 const stepSchema = z.object({
   file: z.string().describe("Absolute path to the file"),
   line: z.number().describe("Start line (1-based)"),
   endLine: z.number().optional().describe("End line (1-based)"),
+  startChar: z.number().optional().describe("Start character (0-based)"),
+  endChar: z.number().optional().describe("End character (0-based)"),
   explanation: z
     .string()
+    .optional()
     .describe(
-      "Step intro — sets the context. Narrated first, shown in the bubble. Subsequent highlights append to it like a teleprompter. Use real newlines, NOT literal backslash-n.",
+      "Short intro — 1–2 sentences — narrated first, shown in the bubble. For multi-point steps, keep this brief and put each distinct point in `highlights[]` instead of stuffing them here; the teleprompter UX depends on it. Omit entirely to highlight without a bubble. No numbered lists (TTS reads them as 'one dot'). Real newlines for paragraphs, NOT literal backslash-n. Avoid ## headers — use **bold** instead. Inline code, code blocks, bullet lists, and links work.",
     ),
   title: z.string().optional().describe("Step title"),
   highlights: z
@@ -139,13 +84,13 @@ const stepSchema = z.object({
         narration: z
           .string()
           .describe(
-            "Spoken text for this highlight. Appended to the bubble as a live transcript. Natural language.",
+            "Spoken text for this sub-highlight — one thought, conversational prose. No numbered lists (TTS reads `1.` `2.` as 'one dot… two dot'). Appended to the bubble as a live transcript.",
           ),
       }),
     )
     .optional()
     .describe(
-      "Sub-range highlights within the step. Selection moves through code as TTS narrates each one. Text builds up in the bubble like a teleprompter. Omit for simple single-highlight steps.",
+      "The canonical pattern for any step with more than one point. Each entry narrates one thought; selection moves to its sub-range while the bubble text builds up — that is the teleprompter UX. Only omit when the step has a single point with nothing sub-range to emphasize.",
     ),
 });
 
@@ -153,42 +98,76 @@ server.registerTool(
   "walkthrough",
   {
     description:
-      "Start or control a multi-step code walkthrough. Pass steps to start. Pass action to navigate (next/prev/goto/stop/pause/resume). Uses global voice/bubble settings from the settings tool.",
+      "Show, explain, and tour code in VS Code — the one tool for all code presentation with commentary, from single inline explanations to multi-step narrated tours. Use when the user asks to explain code, walk through code, tour a codebase, ask 'how does this work', navigate an active tour, clear bubbles, or check walkthrough state. Do NOT use for jumping to code without commentary — use show_code instead. Dispatches by arguments: one step with `explanation` shows an inline markdown bubble (single-step explain); one step WITHOUT explanation highlights only (same as show_code); multiple steps start a narrated tour; `action: 'clear'` removes all bubbles; `action` in {'next','prev','goto','stop','pause','resume'} navigates an active tour (pass `step` index for goto); no arguments returns current status. **Proper usage for multi-point steps:** keep `explanation` to 1–2 intro sentences and put each point in its own `highlights[]` entry with its own `line` range and `narration` — the teleprompter UX (selection moving with the voice, bubble text building up) depends on this pattern. Cramming multiple points into one long `explanation` breaks both the audio flow and the visual sync. **Never use numbered lists (`1.` `2.`) in explanations or narrations** — TTS reads them as 'one dot… two dot' and it's painful. Markdown: real newlines for paragraphs, NOT literal backslash-n; avoid ## headers — use **bold** instead. Uses global voice/bubble/autoplay settings from the settings tool.",
     inputSchema: {
       steps: z
         .array(stepSchema)
         .optional()
-        .describe("Array of walkthrough steps (starts a new walkthrough)"),
+        .describe(
+          "Steps to show. One step with explanation = inline explain. One step without explanation = highlight only. Multiple steps = narrated tour. Precedence: when provided with a non-empty array, takes priority over `action`.",
+        ),
       action: z
-        .enum(["next", "prev", "goto", "stop", "pause", "resume"])
+        .enum(["next", "prev", "goto", "stop", "pause", "resume", "clear"])
         .optional()
-        .describe("Navigate or control an active walkthrough"),
+        .describe(
+          "Control an active walkthrough or clear bubbles. 'clear' removes all explanation bubbles; 'goto' requires `step`; others navigate the current tour.",
+        ),
       step: z
         .number()
         .optional()
-        .describe("Step index (0-based) for goto action"),
+        .describe("Step index (0-based) for action='goto'"),
     },
   },
   async (args) => {
-    if (args.steps) {
-      const result = await startWalkthrough(args.steps as WalkthroughStep[]);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
-      };
-    }
+    const dispatch = walkthroughDispatcher.execute(args);
 
-    if (args.action) {
-      const result = await navigateWalkthrough(args.action, args.step);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
-      };
+    switch (dispatch.type) {
+      case "getStatus": {
+        const result = await getWalkthroughStatus();
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      }
+      case "clear": {
+        const result = await clearExplanations();
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      }
+      case "navigate": {
+        const result = await navigateWalkthrough(
+          dispatch.action,
+          dispatch.step,
+        );
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      }
+      case "highlightOnly": {
+        const result = await openFile(
+          dispatch.file,
+          dispatch.line,
+          dispatch.endLine,
+          dispatch.startChar,
+          dispatch.endChar,
+        );
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      }
+      case "singleExplain": {
+        const s = dispatch.step;
+        const result = await showExplanation(
+          s.file,
+          s.line,
+          s.endLine,
+          s.explanation ?? "",
+          s.title,
+          s.startChar,
+          s.endChar,
+          s.highlights,
+        );
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      }
+      case "startWalkthrough": {
+        const result = await startWalkthrough(
+          dispatch.steps as WalkthroughStep[],
+        );
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      }
     }
-
-    return {
-      content: [
-        { type: "text", text: JSON.stringify(await getWalkthroughStatus()) },
-      ],
-    };
   },
 );
 
@@ -196,9 +175,12 @@ server.registerTool(
   "settings",
   {
     description:
-      "View or update global settings: voice narration, explanation bubbles, autoplay, autoplay delay. Changes persist across sessions.",
+      "View or update global walkthrough settings — voice narration on/off, explanation bubbles on/off, autoplay on/off, and autoplay delay. Use when the user asks to enable, disable, or configure any of those, mute/unmute narration, toggle bubbles, or check current settings. Do NOT use to change the narration voice name — use walkthrough_voice_selection for that. Call with no arguments to read current settings. Changes persist across sessions.",
     inputSchema: {
-      voice: z.boolean().optional().describe("Toggle voice narration on/off"),
+      voice: z
+        .boolean()
+        .optional()
+        .describe("Toggle voice narration on/off (true=on, false=off)"),
       showBubbles: z
         .boolean()
         .optional()
@@ -229,15 +211,17 @@ server.registerTool(
 );
 
 server.registerTool(
-  "walkthrough_voice",
+  "walkthrough_voice_selection",
   {
     description:
-      "Change the narration voice. Speaks a sample so you hear the difference. Persisted across sessions. Use audition=true to hear voices back-to-back. Filter by locale and gender.",
+      "Change the narration voice, preview how it sounds, list available voices, or audition voices back-to-back. Use when the user asks to change the voice, try a different voice, hear voice options, compare voices, or asks 'what voices are available'. Do NOT use to toggle voice on/off — use the settings tool for that. Pass `voice` to switch to a specific voice and hear a sample. Pass `list: true` to list voices without playing audio. Pass `audition: true` to play voices back-to-back for comparison. Filter with `locale` (e.g. 'en-US', 'en', 'de') and `gender`. Voice selection persists across sessions.",
     inputSchema: {
       voice: z
         .string()
         .optional()
-        .describe("Voice name (e.g. en-US-GuyNeural, en-US-MichelleNeural)"),
+        .describe(
+          "Voice name to switch to. Examples: 'en-US-GuyNeural', 'en-US-MichelleNeural'",
+        ),
       list: z
         .boolean()
         .optional()
@@ -245,7 +229,7 @@ server.registerTool(
       audition: z
         .boolean()
         .optional()
-        .describe("Play voices back-to-back so you can compare"),
+        .describe("Play voices back-to-back so the user can compare"),
       locale: z
         .string()
         .optional()
@@ -346,24 +330,10 @@ server.registerTool(
 );
 
 server.registerTool(
-  "walkthrough_status",
-  {
-    description:
-      "Get the current state of an active walkthrough — which step, total steps, step details.",
-  },
-  async () => {
-    const result = await getWalkthroughStatus();
-    return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
-    };
-  },
-);
-
-server.registerTool(
   "get_selection",
   {
     description:
-      "Get the currently selected/highlighted code in VS Code. Returns the file path, line range, and selected text. Use when the user wants to discuss specific code they've highlighted.",
+      "Get the code the user has selected or highlighted in VS Code — returns file path, line range, and selected text. Use when the user refers to 'this code', 'what I've selected', 'the highlighted block', or before calling walkthrough/show_code when the user has already selected the code they want to discuss. Returns an empty selection object when nothing is highlighted.",
   },
   async () => {
     const result = await getSelection();
