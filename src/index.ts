@@ -32,7 +32,7 @@ const packageJson = JSON.parse(
 );
 
 const server = new McpServer({
-  name: "mcp-walkthrough",
+  name: "walkthrough",
   version: packageJson.version,
 });
 

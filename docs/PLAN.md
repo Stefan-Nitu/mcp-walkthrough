@@ -21,6 +21,7 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
 - [x] **Trusted markdown renders LLM command URIs** — fixed, sanitization in `explanations.ts`
 - [x] **PowerShell metacharacter injection in TTS** — fixed, uses EncodedCommand
 - [x] **VS Code engine mismatch** — both now at `^1.100.0`
+- [ ] **`goto`, `pause`, and `resume` silently no-op in the extension** — the dispatcher, bridge, and MCP server all forward these actions correctly, but `vscode-extension/src/extension.ts:113–122` only handles `next`/`prev`/`stop` and falls through to `return { ok: true }` for everything else. Result: caller gets success, nothing happens. `goto` without a step is a no-op of a no-op. Needs: wire the three missing actions into the coordinator (pause/resume block the auto-advance loop; goto jumps to `step` and validates bounds, with a sensible default — either reject without a step or jump to 0).
 
 ## Next
 
@@ -53,7 +54,7 @@ Claude-driven interactive code walkthroughs. Opens files, highlights code, shows
 - Agent can generate a walkthrough once, user replays it anytime
 
 ### Distribution and installation
-- One-command install for all clients: `npx add-mcp mcp-walkthrough -- npx -y mcp-walkthrough`
+- One-command install for all clients: `npx add-mcp walkthrough -- npx -y mcp-walkthrough`
 - Auto-detects Claude Code, Cursor, VS Code, Codex, Windsurf — writes config for each
 - Skill ships with the package (`.claude/skills/mcp-walkthrough/`)
 - Update README with one-liner install + skill setup

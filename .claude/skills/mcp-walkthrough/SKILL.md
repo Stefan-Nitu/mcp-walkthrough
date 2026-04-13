@@ -6,7 +6,7 @@ user-invocable: false
 
 Load the walkthrough MCP tools before proceeding:
 
-`ToolSearch("select:mcp__mcp-walkthrough__walkthrough,mcp__mcp-walkthrough__show_code,mcp__mcp-walkthrough__settings,mcp__mcp-walkthrough__walkthrough_voice_selection,mcp__mcp-walkthrough__get_selection")`
+`ToolSearch("select:mcp__walkthrough__walkthrough,mcp__walkthrough__show_code,mcp__walkthrough__settings,mcp__walkthrough__walkthrough_voice_selection,mcp__walkthrough__get_selection")`
 
 The merged `walkthrough` tool handles every code-presentation case: single inline explain (1 step with `explanation`), highlight-only (1 step without `explanation`, same as `show_code`), multi-step tour (N steps), clear bubbles (`action: "clear"`), navigate (`action: "next"|"prev"|"goto"|"stop"|"pause"|"resume"`), status (no args).
 
